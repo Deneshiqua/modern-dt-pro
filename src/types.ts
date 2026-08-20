@@ -1,9 +1,13 @@
 import type {
   AggregationFn,
   CellContext,
+  ColumnDef,
   ColumnFiltersState,
   HeaderContext,
+  OnChangeFn,
   PaginationState,
+  Row,
+  RowSelectionState,
   SortingState,
 } from "@tanstack/react-table";
 import type { ReactNode } from "react";
@@ -23,6 +27,127 @@ declare module "@tanstack/react-table" {
 
 export type DataTableType = "server" | "portal" | null;
 
+export type DataTableFilterOperator =
+  | "="
+  | "<>"
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "contains"
+  | "notcontains"
+  | "startswith"
+  | "endswith"
+  | "isblank"
+  | "isnotblank";
+
+export type DataTableLogicalOperator = "and" | "or";
+
+export type DataTableBinaryFilterExpression = readonly [
+  field: string,
+  operator: DataTableFilterOperator,
+  value?: unknown,
+];
+
+export type DataTableUnaryFilterExpression = readonly [
+  operator: "!",
+  expression: DataTableFilterExpression,
+];
+
+export interface DataTableComplexFilterExpression
+  extends ReadonlyArray<DataTableLogicalOperator | DataTableFilterExpression> {
+  readonly 0: DataTableFilterExpression;
+  readonly 1: DataTableLogicalOperator;
+  readonly 2: DataTableFilterExpression;
+}
+
+export type DataTableFilterExpression =
+  | DataTableBinaryFilterExpression
+  | DataTableUnaryFilterExpression
+  | DataTableComplexFilterExpression;
+
+export type DataTableSortDescriptor = {
+  selector: string;
+  desc?: boolean;
+};
+
+export type DataTableGroupDescriptor = DataTableSortDescriptor & {
+  isExpanded?: boolean;
+  groupInterval?: string | number;
+};
+
+export type DataTableSummaryType = "sum" | "min" | "max" | "avg" | "count" | "custom";
+
+export type DataTableSummaryDescriptor = {
+  selector?: string;
+  summaryType: DataTableSummaryType;
+};
+
+export type DataTableLoadOptions = {
+  skip?: number;
+  take?: number;
+  sort?: DataTableSortDescriptor | DataTableSortDescriptor[];
+  filter?: DataTableFilterExpression;
+  searchExpr?: string | string[];
+  searchOperation?: DataTableFilterOperator;
+  searchValue?: unknown;
+  group?: DataTableGroupDescriptor | DataTableGroupDescriptor[];
+  groupPath?: unknown[];
+  requireTotalCount?: boolean;
+  requireGroupCount?: boolean;
+  totalSummary?: DataTableSummaryDescriptor | DataTableSummaryDescriptor[];
+  groupSummary?: DataTableSummaryDescriptor | DataTableSummaryDescriptor[];
+  select?: string | string[];
+  userData?: unknown;
+};
+
+export type DataTableGroupItem<T> = {
+  key: unknown;
+  items?: T[] | DataTableGroupItem<T>[] | null;
+  count?: number;
+  summary?: unknown[];
+};
+
+export type DataTableLoadResult<T> = {
+  data: T[] | DataTableGroupItem<T>[];
+  totalCount?: number;
+  groupCount?: number;
+  summary?: unknown[];
+  userData?: unknown;
+};
+
+export type DataTableDataSourceKey<T> =
+  | Extract<keyof T, string>
+  | readonly Extract<keyof T, string>[];
+
+export type DataTableLoadContext = {
+  signal: AbortSignal;
+};
+
+export type DataTableDataSource<T> = {
+  key?: DataTableDataSourceKey<T>;
+  load(
+    options: DataTableLoadOptions,
+    context: DataTableLoadContext,
+  ): DataTableLoadResult<T> | Promise<DataTableLoadResult<T>>;
+};
+
+export type DataTableRemoteOperationSettings = {
+  filtering?: boolean;
+  sorting?: boolean;
+  paging?: boolean;
+  grouping?: boolean;
+  groupPaging?: boolean;
+  summary?: boolean;
+  searching?: boolean;
+};
+
+export type DataTableRemoteOperations = boolean | DataTableRemoteOperationSettings;
+
+export type DataTableHandle = {
+  reload(): Promise<void>;
+};
+
 export type DataTableCellTemplate<T> = (context: CellContext<T, unknown>) => ReactNode;
 export type DataTableGroupCellTemplate<T> = (context: CellContext<T, unknown>) => ReactNode;
 export type DataTableHeaderTemplate<T> = (context: HeaderContext<T, unknown>) => ReactNode;
@@ -32,7 +157,12 @@ export type DataTableTemplateMap<T, TTemplate> = Partial<
 >;
 
 export type DataTableProps<T> = {
-  data: T[];
+  data?: T[];
+  dataSource?: DataTableDataSource<T>;
+  remoteOperations?: DataTableRemoteOperations;
+  loadDebounceMs?: number;
+  /** Otomatik kolon uretimi yerine kullanilacak TanStack kolon tanimlari. */
+  columns?: ColumnDef<T, any>[];
   title?: string;
   /** Sunucu sayfalamasi ve kontrollu filtre icin. */
   type?: DataTableType;
@@ -51,11 +181,24 @@ export type DataTableProps<T> = {
   aggregate?: DataTableTemplateMap<T, DataTableAggregate<T>>;
   defaultGrouping?: string[];
   defaultSorting?: SortingState;
+  sorting?: SortingState;
+  onSortingChange?: OnChangeFn<SortingState>;
+  manualSorting?: boolean;
   hideInGroupRow?: string[];
   emptyMessage?: string;
   enableRowSelection?: boolean;
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
+  getRowId?: (originalRow: T, index: number, parent?: Row<T>) => string;
   onSelectionChange?: (selectedRows: T[]) => void;
   maxHeight?: string;
+  className?: string;
+  isLoading?: boolean;
+  loadingText?: string;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  pageSizeOptions?: number[];
+  itemLabel?: string;
   /** Kolon basligina tiklayarak siralama. */
   enableSorting?: boolean;
   /** Kolon basligi altindaki metin filtresi. */
@@ -96,6 +239,7 @@ export type DataTableProps<T> = {
   onColumnFiltersChange?: (filters: ColumnFiltersState) => void;
   pagination?: PaginationState;
   onPaginationChange?: (pagination: PaginationState) => void;
+  initialPageSize?: number;
   totalRowCount?: number;
   sqlQuery?: string;
   onDeleteSelected?: () => void | Promise<void>;

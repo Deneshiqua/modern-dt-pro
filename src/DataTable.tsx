@@ -26,10 +26,10 @@ import {
     useReactTable
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CodeBracketSquareIcon, CommandLineIcon, MapPinIcon, TableCellsIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CodeBracketSquareIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TableCellsIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
 import { Button, Card, PopoverButton, TBody, THead, Table, Td, Th, Tr } from "./ui";
 import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { CSSProperties, DragEvent, Fragment, ReactNode, UIEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type HTMLProps } from "react";
+import { CSSProperties, DragEvent, Fragment, ReactNode, UIEvent, forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardedRef, type HTMLProps, type ReactElement, type RefAttributes } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems, Transition } from "@headlessui/react";
 import { createPortal } from "react-dom";
 
@@ -45,11 +45,27 @@ import {
 } from "./filters/ColumnHeaderFilters";
 import type {
     DataTableAggregate,
+    DataTableGroupItem,
+    DataTableHandle,
+    DataTableLoadOptions,
     DataTableProps,
     ExportMode,
     ExportOptions,
     ExportScope,
 } from "./types";
+import { buildDataTableLoadOptions } from "./data-source/buildLoadOptions";
+import { createDataSourceRowId } from "./data-source/createDataSourceRowId";
+import { resolveRemoteOperations } from "./data-source/remoteOperations";
+import {
+    flattenRemoteGroups,
+    getRemoteGroupPlaceholderPath,
+    isDataTableGroupItem,
+    isRemoteGroupPlaceholder,
+    isRemoteGroupSentinel,
+    remoteGroupPathKey,
+    replaceRemoteGroupItems,
+    type RemoteGroupMetadata,
+} from "./data-source/remoteGroups";
 import { notify } from "./utils/notify";
 import { measureColumnAutoFitWidth, COLUMN_FILTER_MIN_WIDTH } from "./utils/measureColumnWidth";
 import clsx from "clsx";
@@ -66,7 +82,9 @@ const fuzzyFilter: FilterFn<any> = (row, columnId, value, addMeta) => {
 
 // Aggregate fonksiyonları
 const sumAggregationFn: AggregationFn<any> = (columnId, leafRows) => {
-    return leafRows.reduce((sum, row) => {
+    return leafRows
+        .filter((row) => !isRemoteGroupPlaceholder(row.original))
+        .reduce((sum, row) => {
         const value = row.getValue(columnId);
         const numValue = typeof value === 'number' ? value : parseFloat(String(value));
         return sum + (isNaN(numValue) ? 0 : numValue);
@@ -74,16 +92,21 @@ const sumAggregationFn: AggregationFn<any> = (columnId, leafRows) => {
 };
 
 const avgAggregationFn: AggregationFn<any> = (columnId, leafRows) => {
-    const sum = leafRows.reduce((sum, row) => {
+    const dataRows = leafRows.filter(
+        (row) => !isRemoteGroupPlaceholder(row.original),
+    );
+    const sum = dataRows.reduce((sum, row) => {
         const value = row.getValue(columnId);
         const numValue = typeof value === 'number' ? value : parseFloat(String(value));
         return sum + (isNaN(numValue) ? 0 : numValue);
     }, 0);
-    return leafRows.length > 0 ? sum / leafRows.length : 0;
+    return dataRows.length > 0 ? sum / dataRows.length : 0;
 };
 
 const countAggregationFn: AggregationFn<any> = (_columnId, leafRows) => {
-    return leafRows.length;
+    return leafRows.filter(
+        (row) => !isRemoteGroupPlaceholder(row.original),
+    ).length;
 };
 
 const emptyAggregationFn: AggregationFn<any> = () => undefined;
@@ -141,9 +164,23 @@ const AUTOFIT_SAMPLE_LIMIT = 300;
 
 const EMPTY_GROUPING: GroupingState = [];
 const EMPTY_EXPANDED: ExpandedState = {};
+const EMPTY_DATA: never[] = [];
 const DEFAULT_ROW_HEIGHT = 48;
 const DENSE_ROW_HEIGHT = 40;
 const VIRTUAL_OVERSCAN = 10;
+
+const isAbortError = (error: unknown): boolean =>
+    error instanceof Error && error.name === "AbortError";
+
+const getColumnSelector = <T,>(
+    column: ColumnDef<T, any>,
+): string | undefined => {
+    if ("accessorKey" in column && typeof column.accessorKey === "string") {
+        return column.accessorKey;
+    }
+
+    return typeof column.id === "string" ? column.id : undefined;
+};
 
 const SELECT_COLUMN_STYLE: CSSProperties = {
     width: SELECT_COLUMN_WIDTH,
@@ -204,7 +241,7 @@ const getStickyCellStyle = (
 };
 const countDataRowsInGroup = <T extends Record<string, any>>(row: Row<T>): number => {
     if (!row.getIsGrouped()) {
-        return 1;
+        return isRemoteGroupPlaceholder(row.original) ? 0 : 1;
     }
 
     return row.subRows.reduce((total, subRow) => total + countDataRowsInGroup(subRow), 0);
@@ -212,7 +249,10 @@ const countDataRowsInGroup = <T extends Record<string, any>>(row: Row<T>): numbe
 
 // Grup altindaki secilebilir (veri) satirlari
 const getSelectableLeafRows = <T extends Record<string, any>>(row: Row<T>): Row<T>[] => {
-    return row.getLeafRows().filter((leaf) => !leaf.getIsGrouped());
+    return row.getLeafRows().filter(
+        (leaf) => !leaf.getIsGrouped()
+            && !isRemoteGroupPlaceholder(leaf.original),
+    );
 };
 
 const buildExportFilename = (title: string | undefined, extension: string): string => {
@@ -238,7 +278,10 @@ const getExportableRows = <T,>(table: TanstackTable<T>, scope: ExportScope) => {
             ? table.getSelectedRowModel().flatRows
             : table.getFilteredRowModel().rows;
 
-    return sourceRows.filter((row) => !row.getIsGrouped());
+    return sourceRows.filter(
+        (row) => !row.getIsGrouped()
+            && !isRemoteGroupPlaceholder(row.original),
+    );
 };
 
 const getColumnHeader = <T,>(table: TanstackTable<T>, columnId: string): string => {
@@ -355,8 +398,12 @@ const EXPORT_MENU_SECTIONS: Array<{
     },
 ];
 
-export function DataTable<T extends Record<string, any>>({
+function DataTableInner<T extends Record<string, any>>({
     data,
+    dataSource,
+    remoteOperations,
+    loadDebounceMs = 300,
+    columns: providedColumns,
     title,
     type = null,
     excludeColumns = [],
@@ -369,11 +416,24 @@ export function DataTable<T extends Record<string, any>>({
     aggregate,
     defaultGrouping = [],
     defaultSorting = [],
+    sorting: controlledSorting,
+    onSortingChange,
+    manualSorting = false,
     hideInGroupRow = [],
     emptyMessage = "Gösterilecek veri bulunamadı",
     enableRowSelection = false,
+    rowSelection: controlledRowSelection,
+    onRowSelectionChange,
+    getRowId,
     onSelectionChange,
     maxHeight = "auto",
+    className,
+    isLoading = false,
+    loadingText = "Yükleniyor...",
+    onRefresh,
+    isRefreshing = false,
+    pageSizeOptions = [10, 20, 50, 100],
+    itemLabel = "kayıt",
     enableSorting = true,
     enableColumnFilter = true,
     enableColumnHeaderFilter = true,
@@ -391,6 +451,7 @@ export function DataTable<T extends Record<string, any>>({
     onColumnFiltersChange,
     pagination: controlledPagination,
     onPaginationChange,
+    initialPageSize = 10,
     totalRowCount,
     sqlQuery,
     onDeleteSelected,
@@ -401,8 +462,8 @@ export function DataTable<T extends Record<string, any>>({
     isTransferSelectedDisabled = false,
     onNotify,
     toolbarExtra,
-}: DataTableProps<T>) {
-    const [sorting, setSorting] = useState<SortingState>(defaultSorting);
+}: DataTableProps<T>, ref: ForwardedRef<DataTableHandle>) {
+    const [internalSorting, setInternalSorting] = useState<SortingState>(defaultSorting);
     const [globalFilter, setGlobalFilter] = useState("");
     const [internalColumnFilters, setInternalColumnFilters] = useState<ColumnFiltersState>([]);
     const [grouping, setGrouping] = useState<GroupingState>(
@@ -443,7 +504,7 @@ export function DataTable<T extends Record<string, any>>({
     const [expanded, setExpanded] = useState<ExpandedState>(
         (defaultViewSettings?.expandGroups ?? true) ? true : {},
     );
-    const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+    const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({});
     const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
     const [columnSizingCustomized, setColumnSizingCustomized] = useState(false);
     const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
@@ -455,13 +516,113 @@ export function DataTable<T extends Record<string, any>>({
     const tableGridRef = useRef<HTMLDivElement>(null);
     const [internalPagination, setInternalPagination] = useState<PaginationState>({
         pageIndex: 0,
-        pageSize: 10,
+        pageSize: initialPageSize,
     });
+    const [remoteRows, setRemoteRows] = useState<T[]>([]);
+    const [remoteGroups, setRemoteGroups] = useState<DataTableGroupItem<T>[]>([]);
+    const [remoteTotalCount, setRemoteTotalCount] = useState<number>();
+    const [remoteGroupCount, setRemoteGroupCount] = useState<number>();
+    const [, setRemoteSummary] = useState<unknown[]>();
+    const [, setRemoteGroupLoadMetadata] = useState<Record<string, {
+        totalCount?: number;
+        groupCount?: number;
+        summary?: unknown[];
+        userData?: unknown;
+    }>>({});
+    const [remoteGroupLoadingKeys, setRemoteGroupLoadingKeys] = useState<Set<string>>(
+        () => new Set(),
+    );
+    const [isRemoteLoading, setIsRemoteLoading] = useState(false);
+    const [isRemoteRefreshing, setIsRemoteRefreshing] = useState(false);
+    const remoteRequestIdRef = useRef(0);
+    const remoteAbortControllerRef = useRef<AbortController | undefined>(undefined);
+    const remoteDebounceKeyRef = useRef<string | undefined>(undefined);
+    const remoteGroupGenerationRef = useRef(0);
+    const remoteGroupControllersRef = useRef<Map<string, AbortController>>(
+        new Map(),
+    );
+    const expandRemoteGroupsRef = useRef(viewSettings.expandGroups);
+    expandRemoteGroupsRef.current = viewSettings.expandGroups;
 
     const columnFilters = controlledColumnFilters ?? internalColumnFilters;
     const pagination = controlledPagination ?? internalPagination;
-    const isManualPagination = type === "server" && controlledPagination !== undefined && typeof totalRowCount === "number";
-    const isManualFiltering = type === "server" && controlledColumnFilters !== undefined;
+    const sorting = controlledSorting ?? internalSorting;
+    const rowSelection = controlledRowSelection ?? internalRowSelection;
+    const resolvedRemoteOperations = useMemo(
+        () => resolveRemoteOperations(remoteOperations),
+        [remoteOperations],
+    );
+    const hasDataSource = Boolean(dataSource);
+    const isRemoteFiltering = hasDataSource
+        && (resolvedRemoteOperations.filtering || resolvedRemoteOperations.searching);
+    const isRemoteSorting = hasDataSource && resolvedRemoteOperations.sorting;
+    const isRemotePaging = hasDataSource && resolvedRemoteOperations.paging;
+    const isRemoteGrouping = hasDataSource && resolvedRemoteOperations.grouping;
+    const remoteGroupView = useMemo(
+        () => flattenRemoteGroups(
+            remoteGroups,
+            grouping,
+        ),
+        [remoteGroups, grouping],
+    );
+    const effectiveData = hasDataSource
+        ? (isRemoteGrouping && remoteGroups.length > 0
+            ? remoteGroupView.rows
+            : remoteRows)
+        : (data ?? EMPTY_DATA);
+    const effectiveTotalRowCount = hasDataSource ? remoteTotalCount : totalRowCount;
+    const effectivePageRowCount = isRemoteGrouping
+        && grouping.length > 0
+        && resolvedRemoteOperations.groupPaging
+        ? remoteGroupCount
+        : effectiveTotalRowCount;
+    const isManualPagination = isRemotePaging
+        || (type === "server"
+            && controlledPagination !== undefined
+            && typeof totalRowCount === "number");
+    const isManualFiltering = isRemoteFiltering
+        || (type === "server" && controlledColumnFilters !== undefined);
+    const isManualSorting = manualSorting || isRemoteSorting;
+    const effectiveIsLoading = isLoading || isRemoteLoading;
+    const effectiveIsRefreshing = isRefreshing || isRemoteRefreshing;
+    const dataSourceRowId = useMemo(
+        () => createDataSourceRowId(dataSource?.key),
+        [dataSource?.key],
+    );
+    const effectiveGetRowId = useCallback((
+        originalRow: T,
+        index: number,
+        parent?: Row<T>,
+    ): string => {
+        const placeholderPath = getRemoteGroupPlaceholderPath(originalRow);
+        if (placeholderPath) {
+            return `remote-group-placeholder:${remoteGroupPathKey(placeholderPath)}`;
+        }
+
+        if (getRowId) {
+            return getRowId(originalRow, index, parent);
+        }
+
+        return dataSourceRowId?.(originalRow) ?? String(index);
+    }, [dataSourceRowId, getRowId]);
+
+    const handleSortingChange: OnChangeFn<SortingState> = (updaterOrValue) => {
+        const nextSorting = typeof updaterOrValue === "function"
+            ? updaterOrValue(sorting)
+            : updaterOrValue;
+
+        setInternalSorting(nextSorting);
+        onSortingChange?.(nextSorting);
+    };
+
+    const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updaterOrValue) => {
+        const nextSelection = typeof updaterOrValue === "function"
+            ? updaterOrValue(rowSelection)
+            : updaterOrValue;
+
+        setInternalRowSelection(nextSelection);
+        onRowSelectionChange?.(nextSelection);
+    };
 
     const handleColumnFiltersChange: OnChangeFn<ColumnFiltersState> = (updaterOrValue) => {
         const nextColumnFilters = typeof updaterOrValue === 'function'
@@ -492,12 +653,35 @@ export function DataTable<T extends Record<string, any>>({
 
     const deferredGlobalFilter = useDeferredValue(globalFilter);
     const onSelectionChangeRef = useRef(onSelectionChange);
+    const pageResetKey = JSON.stringify({
+        columnFilters,
+        globalFilter,
+        grouping,
+        sorting,
+    });
+    const pageResetKeyRef = useRef(pageResetKey);
     onSelectionChangeRef.current = onSelectionChange;
+
+    useEffect(() => {
+        if (pageResetKeyRef.current === pageResetKey) {
+            return;
+        }
+
+        pageResetKeyRef.current = pageResetKey;
+        if (pagination.pageIndex !== 0) {
+            handlePaginationChange({
+                ...pagination,
+                pageIndex: 0,
+            });
+        }
+    }, [pageResetKey, pagination]);
 
     // Veri degistiginde secimi sifirla
     useEffect(() => {
-        setRowSelection({});
-    }, [data]);
+        if (controlledRowSelection === undefined) {
+            setInternalRowSelection({});
+        }
+    }, [controlledRowSelection, effectiveData]);
 
     useEffect(() => {
         setViewSettings((current) => ({
@@ -517,7 +701,7 @@ export function DataTable<T extends Record<string, any>>({
             setGrouping(EMPTY_GROUPING);
         }
         if (!enableRowSelection) {
-            setRowSelection({});
+            handleRowSelectionChange({});
         }
     }, [
         enableRowSelection,
@@ -552,7 +736,7 @@ export function DataTable<T extends Record<string, any>>({
         }
 
         if (patch.sorting === false) {
-            setSorting(defaultSorting);
+            handleSortingChange(defaultSorting);
         }
 
         if (patch.columnFilter === false && !next.columnHeaderFilter) {
@@ -570,7 +754,7 @@ export function DataTable<T extends Record<string, any>>({
         }
 
         if (patch.rowSelection === false) {
-            setRowSelection({});
+            handleRowSelectionChange({});
         }
 
         if (patch.columnResizing === false) {
@@ -613,7 +797,7 @@ export function DataTable<T extends Record<string, any>>({
 
     // Grup chipinden siralama: yok -> artan -> azalan -> yok
     const toggleGroupingSort = (columnId: string) => {
-        setSorting((current) => {
+        handleSortingChange((current) => {
             const otherSorting = current.filter((item) => item.id !== columnId);
             const columnSorting = current.find((item) => item.id === columnId);
 
@@ -653,8 +837,8 @@ export function DataTable<T extends Record<string, any>>({
     };
 
     // Otomatik column generation - TÜM kolonları oluştur
-    const columns = useMemo<ColumnDef<T>[]>(() => {
-        const firstRow = data[0];
+    const generatedColumns = useMemo<ColumnDef<T>[]>(() => {
+        const firstRow = effectiveData[0];
 
         // visibleColumns varsa, önce onları sırayla ekle, sonra geri kalanları
         // Bu sayede kolon sıralaması visibleColumns'a göre olur
@@ -793,7 +977,9 @@ export function DataTable<T extends Record<string, any>>({
         }
 
         return dataColumns;
-    }, [data, excludeColumns, columnLabels, rowSelectionEnabled, visibleColumns, valueMappers, cellTemplate, grupCellTemplate, headerTemplate, aggregate, groupingEnabled, sortingEnabled, columnFilterEnabled, columnHeaderFilterEnabled, columnResizingEnabled]);
+    }, [effectiveData, excludeColumns, columnLabels, rowSelectionEnabled, visibleColumns, valueMappers, cellTemplate, grupCellTemplate, headerTemplate, aggregate, groupingEnabled, sortingEnabled, columnFilterEnabled, columnHeaderFilterEnabled, columnResizingEnabled]);
+
+    const columns = providedColumns ?? generatedColumns;
 
     // Initial column visibility state - visibleColumns varsa sadece onları göster
     const initialColumnVisibility = useMemo<VisibilityState>(() => {
@@ -801,8 +987,8 @@ export function DataTable<T extends Record<string, any>>({
 
         // Tüm kolonları gizli yap
         const visibility: VisibilityState = {};
-        if (data && data.length > 0) {
-            const firstRow = data[0];
+        if (effectiveData.length > 0) {
+            const firstRow = effectiveData[0];
             Object.keys(firstRow).forEach(key => {
                 if (!excludeColumns.includes(key as keyof T)) {
                     visibility[key] = false;
@@ -816,7 +1002,7 @@ export function DataTable<T extends Record<string, any>>({
         });
 
         return visibility;
-    }, [data, visibleColumns, excludeColumns]);
+    }, [effectiveData, visibleColumns, excludeColumns]);
 
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialColumnVisibility);
 
@@ -841,8 +1027,8 @@ export function DataTable<T extends Record<string, any>>({
 
                 if (Object.keys(initialColumnVisibility).length > 0) {
                     Object.assign(newVisibility, initialColumnVisibility);
-                } else if (data && data.length > 0) {
-                    const firstRow = data[0];
+                } else if (effectiveData.length > 0) {
+                    const firstRow = effectiveData[0];
                     Object.keys(firstRow).forEach((key) => {
                         if (!excludeColumns.includes(key as keyof T)) {
                             newVisibility[key] = true;
@@ -879,7 +1065,300 @@ export function DataTable<T extends Record<string, any>>({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialColumnVisibility, grouping]);
 
-    const memoizedData = useMemo(() => data, [data]);
+    const discoveredSearchExpr = useMemo(
+        () => columns
+            .map(getColumnSelector)
+            .filter((selector): selector is string => Boolean(selector) && selector !== "select"),
+        [columns],
+    );
+    const searchExprRef = useRef<string[]>(discoveredSearchExpr);
+    if (discoveredSearchExpr.length > 0) {
+        searchExprRef.current = discoveredSearchExpr;
+    }
+    const searchExpr = discoveredSearchExpr.length > 0
+        ? discoveredSearchExpr
+        : searchExprRef.current;
+    const loadOptions = useMemo<DataTableLoadOptions>(
+        () => buildDataTableLoadOptions({
+            columnFilters,
+            sorting,
+            pagination,
+            globalFilter: deferredGlobalFilter,
+            grouping,
+            searchExpr,
+            remoteOperations: resolvedRemoteOperations,
+        }),
+        [
+            columnFilters,
+            sorting,
+            pagination,
+            deferredGlobalFilter,
+            grouping,
+            searchExpr,
+            resolvedRemoteOperations,
+        ],
+    );
+    const loadOptionsKey = JSON.stringify(loadOptions);
+    const remoteDebounceKey = JSON.stringify({
+        filter: loadOptions.filter,
+        searchExpr: loadOptions.searchExpr,
+        searchOperation: loadOptions.searchOperation,
+        searchValue: loadOptions.searchValue,
+    });
+    const remoteGroupCacheKey = isRemoteGrouping
+        ? JSON.stringify({
+            columnFilters,
+            globalFilter: deferredGlobalFilter,
+            grouping,
+            sorting,
+        })
+        : "";
+
+    const clearRemoteGroupCache = useCallback(() => {
+        if (!isRemoteGrouping) {
+            return;
+        }
+
+        remoteGroupGenerationRef.current += 1;
+        remoteGroupControllersRef.current.forEach((controller) => controller.abort());
+        remoteGroupControllersRef.current.clear();
+        setRemoteGroups([]);
+        setRemoteGroupLoadingKeys(new Set());
+        setRemoteGroupLoadMetadata({});
+        setExpanded(expandRemoteGroupsRef.current ? true : {});
+    }, [isRemoteGrouping]);
+
+    const executeRemoteLoad = useCallback(async (
+        options: DataTableLoadOptions,
+        refreshing = false,
+    ): Promise<void> => {
+        if (!dataSource) {
+            return;
+        }
+
+        remoteAbortControllerRef.current?.abort();
+        const controller = new AbortController();
+        remoteAbortControllerRef.current = controller;
+        const requestId = ++remoteRequestIdRef.current;
+        clearRemoteGroupCache();
+        setIsRemoteLoading(!refreshing);
+        setIsRemoteRefreshing(refreshing);
+
+        try {
+            const result = await dataSource.load(options, {
+                signal: controller.signal,
+            });
+
+            if (requestId !== remoteRequestIdRef.current || controller.signal.aborted) {
+                return;
+            }
+
+            const containsGroupItems = result.data.some(isDataTableGroupItem);
+            const expectsGroups = options.group !== undefined;
+            if (containsGroupItems || (expectsGroups && result.data.length === 0)) {
+                setRemoteGroups(result.data as DataTableGroupItem<T>[]);
+                setRemoteRows([]);
+            } else {
+                setRemoteGroups([]);
+                setRemoteRows(result.data as T[]);
+            }
+            setRemoteTotalCount(
+                result.totalCount
+                ?? (containsGroupItems ? undefined : result.data.length),
+            );
+            setRemoteGroupCount(
+                result.groupCount
+                ?? (containsGroupItems ? result.data.length : undefined),
+            );
+            setRemoteSummary(result.summary);
+        } catch (error) {
+            if (!isAbortError(error) && requestId === remoteRequestIdRef.current) {
+                notify("error", "Veriler yüklenirken bir hata oluştu.", onNotify);
+            }
+        } finally {
+            if (requestId === remoteRequestIdRef.current) {
+                setIsRemoteLoading(false);
+                setIsRemoteRefreshing(false);
+            }
+        }
+    }, [clearRemoteGroupCache, dataSource, onNotify]);
+
+    useEffect(() => {
+        if (!dataSource) {
+            remoteAbortControllerRef.current?.abort();
+            remoteGroupGenerationRef.current += 1;
+            remoteGroupControllersRef.current.forEach(
+                (controller) => controller.abort(),
+            );
+            remoteGroupControllersRef.current.clear();
+            setRemoteGroupLoadingKeys(new Set());
+            setIsRemoteLoading(false);
+            setIsRemoteRefreshing(false);
+            return;
+        }
+
+        remoteAbortControllerRef.current?.abort();
+        const previousDebounceKey = remoteDebounceKeyRef.current;
+        remoteDebounceKeyRef.current = remoteDebounceKey;
+        const shouldDebounce = previousDebounceKey !== undefined
+            && previousDebounceKey !== remoteDebounceKey;
+        const timeoutId = globalThis.setTimeout(
+            () => void executeRemoteLoad(loadOptions),
+            shouldDebounce ? Math.max(0, loadDebounceMs) : 0,
+        );
+
+        return () => {
+            globalThis.clearTimeout(timeoutId);
+            remoteAbortControllerRef.current?.abort();
+        };
+        // loadOptionsKey, yukleme seceneklerindeki yapisal degisiklikleri izler.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        dataSource,
+        executeRemoteLoad,
+        loadDebounceMs,
+        loadOptionsKey,
+        remoteDebounceKey,
+        remoteGroupCacheKey,
+    ]);
+
+    const reloadRemoteData = useCallback(
+        () => executeRemoteLoad(loadOptions, true),
+        [executeRemoteLoad, loadOptions],
+    );
+
+    useImperativeHandle(ref, () => ({
+        reload: reloadRemoteData,
+    }), [reloadRemoteData]);
+
+    const handleRefresh = useCallback(async () => {
+        if (dataSource) {
+            await reloadRemoteData();
+        }
+        onRefresh?.();
+    }, [dataSource, onRefresh, reloadRemoteData]);
+
+    const loadRemoteGroup = useCallback(async (path: unknown[]): Promise<void> => {
+        if (!dataSource || !isRemoteGrouping) {
+            return;
+        }
+
+        const pathKey = remoteGroupPathKey(path);
+        const metadata = remoteGroupView.metadata.get(pathKey);
+        if (metadata?.loaded || remoteGroupControllersRef.current.has(pathKey)) {
+            return;
+        }
+
+        const controller = new AbortController();
+        const generation = remoteGroupGenerationRef.current;
+        remoteGroupControllersRef.current.set(pathKey, controller);
+        setRemoteGroupLoadingKeys((current) => {
+            const next = new Set(current);
+            next.add(pathKey);
+            return next;
+        });
+
+        try {
+            let result = await dataSource.load({
+                ...loadOptions,
+                groupPath: path,
+                skip: 0,
+                take: pagination.pageSize,
+                requireGroupCount: true,
+            }, {
+                signal: controller.signal,
+            });
+
+            if (
+                controller.signal.aborted
+                || generation !== remoteGroupGenerationRef.current
+                || remoteGroupControllersRef.current.get(pathKey) !== controller
+            ) {
+                return;
+            }
+
+            const collectedItems = [...result.data];
+            const containsNestedGroups = collectedItems.some(isDataTableGroupItem);
+            const expectedItemCount = containsNestedGroups
+                ? result.groupCount
+                : result.totalCount;
+
+            while (
+                typeof expectedItemCount === "number"
+                && collectedItems.length < expectedItemCount
+            ) {
+                const nextResult = await dataSource.load({
+                    ...loadOptions,
+                    groupPath: path,
+                    skip: collectedItems.length,
+                    take: pagination.pageSize,
+                    requireGroupCount: true,
+                }, {
+                    signal: controller.signal,
+                });
+
+                if (
+                    controller.signal.aborted
+                    || generation !== remoteGroupGenerationRef.current
+                    || remoteGroupControllersRef.current.get(pathKey) !== controller
+                ) {
+                    return;
+                }
+                if (nextResult.data.length === 0) {
+                    break;
+                }
+
+                collectedItems.push(...nextResult.data);
+                result = {
+                    ...result,
+                    ...nextResult,
+                    data: containsNestedGroups
+                        ? collectedItems as DataTableGroupItem<T>[]
+                        : collectedItems as T[],
+                };
+            }
+
+            setRemoteGroups((current) => replaceRemoteGroupItems(
+                current,
+                path,
+                containsNestedGroups
+                    ? collectedItems as DataTableGroupItem<T>[]
+                    : collectedItems as T[],
+                result.summary,
+            ));
+            setRemoteGroupLoadMetadata((current) => ({
+                ...current,
+                [pathKey]: {
+                    totalCount: result.totalCount,
+                    groupCount: result.groupCount,
+                    summary: result.summary,
+                    userData: result.userData,
+                },
+            }));
+        } catch (error) {
+            if (!isAbortError(error) && generation === remoteGroupGenerationRef.current) {
+                notify("error", "Grup verileri yüklenirken bir hata oluştu.", onNotify);
+            }
+        } finally {
+            if (remoteGroupControllersRef.current.get(pathKey) === controller) {
+                remoteGroupControllersRef.current.delete(pathKey);
+                setRemoteGroupLoadingKeys((current) => {
+                    const next = new Set(current);
+                    next.delete(pathKey);
+                    return next;
+                });
+            }
+        }
+    }, [
+        dataSource,
+        isRemoteGrouping,
+        loadOptions,
+        onNotify,
+        pagination.pageSize,
+        remoteGroupView.metadata,
+    ]);
+
+    const memoizedData = effectiveData;
     const hasData = memoizedData.length > 0;
 
     const table = useReactTable({
@@ -904,8 +1383,8 @@ export function DataTable<T extends Record<string, any>>({
             avg: avgAggregationFn,
             count: countAggregationFn,
         },
-        onSortingChange: setSorting,
-        getSortedRowModel: getSortedRowModel(),
+        onSortingChange: handleSortingChange,
+        getSortedRowModel: isManualSorting ? undefined : getSortedRowModel(),
         onColumnFiltersChange: handleColumnFiltersChange,
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
@@ -919,8 +1398,10 @@ export function DataTable<T extends Record<string, any>>({
         getExpandedRowModel: getExpandedRowModel(),
         onPaginationChange: handlePaginationChange,
         getPaginationRowModel: isManualPagination ? undefined : getPaginationRowModel(),
-        onRowSelectionChange: setRowSelection,
-        enableRowSelection: rowSelectionEnabled,
+        onRowSelectionChange: handleRowSelectionChange,
+        enableRowSelection: rowSelectionEnabled
+            ? (row) => !isRemoteGroupPlaceholder(row.original)
+            : false,
         enableSorting: sortingEnabled,
         enableGrouping: groupingEnabled,
         enableGlobalFilter: searchEnabled,
@@ -934,20 +1415,97 @@ export function DataTable<T extends Record<string, any>>({
         },
         manualFiltering: isManualFiltering,
         manualPagination: isManualPagination,
-        rowCount: isManualPagination ? totalRowCount : undefined,
+        manualSorting: isManualSorting,
+        manualGrouping: false,
+        rowCount: isManualPagination ? effectivePageRowCount : undefined,
+        getRowId: effectiveGetRowId,
         getCoreRowModel: getCoreRowModel(),
         meta: {
             valueMappers,
         },
     });
 
+    const getRemoteGroupPath = useCallback((row: Row<T>): unknown[] => {
+        const path: unknown[] = [];
+        let currentRow: Row<T> | undefined = row;
+
+        while (currentRow) {
+            if (
+                currentRow.getIsGrouped()
+                && !isRemoteGroupSentinel(currentRow.groupingValue)
+            ) {
+                path.unshift(currentRow.groupingValue);
+            }
+            currentRow = currentRow.parentId
+                ? table.getRow(currentRow.parentId)
+                : undefined;
+        }
+
+        return path;
+    }, [table]);
+
+    const handleGroupExpandedToggle = useCallback((row: Row<T>) => {
+        const shouldExpand = !row.getIsExpanded();
+        row.toggleExpanded(shouldExpand);
+
+        if (!shouldExpand || !isRemoteGrouping || remoteGroups.length === 0) {
+            return;
+        }
+
+        const path = getRemoteGroupPath(row);
+        if (path.length > 0) {
+            void loadRemoteGroup(path);
+        }
+    }, [
+        getRemoteGroupPath,
+        isRemoteGrouping,
+        loadRemoteGroup,
+        remoteGroups.length,
+    ]);
+
+    useEffect(() => {
+        if (!isRemoteGrouping || remoteGroups.length === 0) {
+            return;
+        }
+
+        const loadExpandedGroups = (rows: Row<T>[]) => {
+            rows.forEach((row) => {
+                if (!row.getIsGrouped() || !row.getIsExpanded()) {
+                    return;
+                }
+
+                const path = getRemoteGroupPath(row);
+                const pathKey = remoteGroupPathKey(path);
+                const metadata = remoteGroupView.metadata.get(pathKey);
+                if (path.length > 0 && metadata && !metadata.loaded) {
+                    void loadRemoteGroup(path);
+                }
+
+                loadExpandedGroups(row.subRows);
+            });
+        };
+
+        loadExpandedGroups(table.getRowModel().rows);
+    }, [
+        expanded,
+        getRemoteGroupPath,
+        isRemoteGrouping,
+        loadRemoteGroup,
+        remoteGroupView.metadata,
+        remoteGroups,
+        table,
+    ]);
+
     const selectedRecordCount = useMemo(
         () => Object.values(rowSelection).filter(Boolean).length,
         [rowSelection]
     );
     const totalRecordCount = isManualPagination
-        ? totalRowCount ?? 0
-        : table.getFilteredRowModel().flatRows.filter((row) => !row.getIsGrouped()).length;
+        ? effectiveTotalRowCount ?? 0
+        : table.getFilteredRowModel().flatRows.filter(
+            (row) => !row.getIsGrouped()
+                && !isRemoteGroupPlaceholder(row.original),
+        ).length;
 
     // Grup kolonu pin: sadece gruplama varken yatay scrollda solda sabit kalsin
     const stickyEnabled = isGroupColumnSticky && grouping.length > 0;
@@ -973,7 +1531,7 @@ export function DataTable<T extends Record<string, any>>({
                 if (isSelectColumnId(column.id)) {
                     return `${SELECT_COLUMN_WIDTH}px`;
                 }
-                if (fitColumnsEnabled) {
+                if (fitColumnsEnabled && !columnSizingCustomized) {
                     // Olculer oran olarak kullanilir; grid tum genisligi bosluksuz doldurur
                     return `minmax(${MIN_COL_SIZE}px, ${column.getSize()}fr)`;
                 }
@@ -994,7 +1552,7 @@ export function DataTable<T extends Record<string, any>>({
         0,
     );
     const rowWidth = useSizedColumns
-        ? fitColumnsEnabled
+        ? fitColumnsEnabled && !columnSizingCustomized
             ? `max(100%, ${minimumRowWidth}px)`
             : `max(100%, ${table.getTotalSize()}px)`
         : "100%";
@@ -1023,7 +1581,8 @@ export function DataTable<T extends Record<string, any>>({
         const leafRows = table
             .getFilteredRowModel()
             .flatRows
-            .filter((row) => !row.getIsGrouped())
+            .filter((row) => !row.getIsGrouped()
+                && !isRemoteGroupPlaceholder(row.original))
             .slice(0, AUTOFIT_SAMPLE_LIMIT);
         const headerIconWidth =
             (sortingEnabled ? 24 : 0) +
@@ -1112,7 +1671,7 @@ export function DataTable<T extends Record<string, any>>({
         fitColumnsEnabled,
         columnSizingCustomized,
         visibleLeafColumnKey,
-        data,
+        effectiveData,
         deferredGlobalFilter,
         columnFilters,
         sortingEnabled,
@@ -1120,7 +1679,10 @@ export function DataTable<T extends Record<string, any>>({
         columnFilterEnabled,
     ]);
 
-    const tableRows = table.getRowModel().rows;
+    const tableRows = table.getRowModel().rows.filter(
+        (row) => !isRemoteGroupPlaceholder(row.original)
+            && !(row.getIsGrouped() && isRemoteGroupSentinel(row.groupingValue)),
+    );
     const virtualizationEnabled = viewSettings.virtualization && hasData;
     const estimatedRowHeight = viewSettings.rowDense ? DENSE_ROW_HEIGHT : DEFAULT_ROW_HEIGHT;
     const rowVirtualizer = useVirtualizer({
@@ -1152,7 +1714,8 @@ export function DataTable<T extends Record<string, any>>({
         const selectedRows = table
             .getSelectedRowModel()
             .flatRows
-            .filter((row) => !row.getIsGrouped())
+            .filter((row) => !row.getIsGrouped()
+                && !isRemoteGroupPlaceholder(row.original))
             .map((row) => row.original);
 
         onSelectionChangeRef.current(selectedRows);
@@ -1337,6 +1900,7 @@ export function DataTable<T extends Record<string, any>>({
                     ? "fixed inset-0 z-[80] bg-white p-4 dark:bg-dark-900"
                     : "h-full",
                 table.getState().columnSizingInfo.isResizingColumn && "dtp-resizing",
+                className,
             )}
         >
             <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1494,7 +2058,7 @@ export function DataTable<T extends Record<string, any>>({
                         onClick={() => {
                             table.resetColumnFilters();
                             table.resetGlobalFilter();
-                            setSorting(defaultSorting);
+                            handleSortingChange(defaultSorting);
                             setGrouping(defaultGrouping);
                             setExpanded({});
                             setIsGroupColumnSticky(true);
@@ -1502,9 +2066,12 @@ export function DataTable<T extends Record<string, any>>({
                         variant="flat"
                         isIcon
                         className="size-8 rounded-full"
-                        title="Filtreleri Temizle"
+                        title="Filtreleri temizle"
                     >
-                        <ArrowPathIcon className="size-4.5" />
+                        <span className="relative block size-4.5" aria-hidden="true">
+                            <FunnelIcon className="size-4.5" />
+                            <XMarkIcon className="absolute -right-1 -top-1 size-2.5 rounded-full bg-white text-gray-700 ring-1 ring-white dark:bg-dark-700 dark:text-dark-100 dark:ring-dark-700" />
+                        </span>
                     </Button>
                     {excelExportEnabled
                         ? renderExportMenu(
@@ -1530,6 +2097,19 @@ export function DataTable<T extends Record<string, any>>({
                             title="Sorguyu göster"
                         >
                             <CommandLineIcon className="size-4.5" />
+                        </Button>
+                    ) : null}
+                    {dataSource || onRefresh ? (
+                        <Button
+                            onClick={() => void handleRefresh()}
+                            disabled={effectiveIsRefreshing || effectiveIsLoading}
+                            variant="flat"
+                            isIcon
+                            className="size-8 rounded-full"
+                            title="Yenile"
+                            aria-label="Tabloyu yenile"
+                        >
+                            <ArrowPathIcon className={clsx("size-4.5", (effectiveIsRefreshing || effectiveIsLoading) && "animate-spin")} />
                         </Button>
                     ) : null}
                     {toolbarExtra}
@@ -1649,6 +2229,7 @@ export function DataTable<T extends Record<string, any>>({
                                                     <ColumnResizeHandle
                                                         header={header}
                                                         onAutoFit={handleAutoFitColumn}
+                                                        onResizeStart={() => setColumnSizingCustomized(true)}
                                                     />
                                                 ) : null}
                                             </Th>
@@ -1670,6 +2251,12 @@ export function DataTable<T extends Record<string, any>>({
                                     {virtualizationEnabled ? <VirtualPad height={virtualPadTop} /> : null}
                                     {rowsToRender.map((row) => {
                                         const isGroupRow = row.getIsGrouped();
+                                        if (
+                                            isRemoteGroupPlaceholder(row.original)
+                                            || (isGroupRow && isRemoteGroupSentinel(row.groupingValue))
+                                        ) {
+                                            return null;
+                                        }
                                         const virtualRowStyle = virtualizationEnabled
                                             ? { height: estimatedRowHeight }
                                             : undefined;
@@ -1677,7 +2264,16 @@ export function DataTable<T extends Record<string, any>>({
                                         if (isGroupRow) {
                                             const groupingColumnId = row.groupingColumnId;
                                             const groupingValue = row.groupingValue;
-                                            const groupedLeafRowCount = countDataRowsInGroup(row);
+                                            const remoteGroupPath = isRemoteGrouping
+                                                ? getRemoteGroupPath(row)
+                                                : [];
+                                            const remoteGroupKey = remoteGroupPathKey(remoteGroupPath);
+                                            const remoteMetadata: RemoteGroupMetadata | undefined =
+                                                remoteGroupView.metadata.get(remoteGroupKey);
+                                            const groupedLeafRowCount =
+                                                remoteMetadata?.count ?? countDataRowsInGroup(row);
+                                            const isRemoteGroupLoading =
+                                                remoteGroupLoadingKeys.has(remoteGroupKey);
                                             const groupColumn = table.getAllLeafColumns().find(col => col.id === groupingColumnId);
                                             const groupColumnHeader = groupColumn ? (typeof groupColumn.columnDef.header === 'string' ? groupColumn.columnDef.header : groupingColumnId) : groupingColumnId;
                                             const groupDepth = row.depth;
@@ -1725,7 +2321,7 @@ export function DataTable<T extends Record<string, any>>({
                                                                         onClick={(e) => e.stopPropagation()}
                                                                         onChange={() => {
                                                                             const shouldSelect = !isAllLeafSelected;
-                                                                            setRowSelection((prev) => {
+                                                                            handleRowSelectionChange((prev) => {
                                                                                 const next = { ...prev };
                                                                                 leafRows.forEach((leaf) => {
                                                                                     if (shouldSelect) {
@@ -1761,15 +2357,41 @@ export function DataTable<T extends Record<string, any>>({
                                                                     )}
                                                                 >
                                                                     {customGroupHeaderTemplate ? (
-                                                                        customGroupHeaderTemplate(cell.getContext())
+                                                                        <div className="flex items-center gap-2">
+                                                                            {isRemoteGrouping ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleGroupExpandedToggle(row)}
+                                                                                    className="hover:text-primary-600 transition-colors"
+                                                                                    disabled={isRemoteGroupLoading}
+                                                                                >
+                                                                                    {isRemoteGroupLoading ? (
+                                                                                        <ArrowPathIcon className="size-4 animate-spin" />
+                                                                                    ) : row.getIsExpanded() ? (
+                                                                                        <ChevronDownIcon className="size-4" />
+                                                                                    ) : (
+                                                                                        <ChevronRightIcon className="size-4" />
+                                                                                    )}
+                                                                                </button>
+                                                                            ) : null}
+                                                                            {customGroupHeaderTemplate(cell.getContext())}
+                                                                            {isRemoteGroupLoading ? (
+                                                                                <span className="text-sm text-gray-500">
+                                                                                    Yükleniyor...
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
                                                                     ) : (
                                                                         <div className="flex items-center gap-2">
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={row.getToggleExpandedHandler()}
+                                                                                onClick={() => handleGroupExpandedToggle(row)}
                                                                                 className="hover:text-primary-600 transition-colors"
+                                                                                disabled={isRemoteGroupLoading}
                                                                             >
-                                                                                {row.getIsExpanded() ? (
+                                                                                {isRemoteGroupLoading ? (
+                                                                                    <ArrowPathIcon className="size-4 animate-spin" />
+                                                                                ) : row.getIsExpanded() ? (
                                                                                     <ChevronDownIcon className="size-4" />
                                                                                 ) : (
                                                                                     <ChevronRightIcon className="size-4" />
@@ -1779,6 +2401,11 @@ export function DataTable<T extends Record<string, any>>({
                                                                                 <span className="text-gray-600 dark:text-gray-400 font-normal">{groupColumnHeader}:</span>{' '}
                                                                                 {String(groupingValue)}{' '}
                                                                                 <span className="text-gray-500 dark:text-gray-500">({groupedLeafRowCount})</span>
+                                                                                {isRemoteGroupLoading ? (
+                                                                                    <span className="ml-2 font-normal text-gray-500">
+                                                                                        Yükleniyor...
+                                                                                    </span>
+                                                                                ) : null}
                                                                             </span>
                                                                         </div>
                                                                     )}
@@ -1949,7 +2576,8 @@ export function DataTable<T extends Record<string, any>>({
                                                     const leafRows = table
                                                         .getFilteredRowModel()
                                                         .flatRows
-                                                        .filter((row) => !row.getIsGrouped());
+                                                        .filter((row) => !row.getIsGrouped()
+                                                            && !isRemoteGroupPlaceholder(row.original));
                                                     const total = aggregationFn(
                                                         column.id,
                                                         leafRows,
@@ -1994,7 +2622,7 @@ export function DataTable<T extends Record<string, any>>({
                                         colSpan={Math.max(table.getVisibleLeafColumns().length, 1)}
                                         className="dtp-empty-cell h-full px-4 py-10 text-center text-gray-500 dark:text-gray-400"
                                     >
-                                        {emptyMessage}
+                                        {effectiveIsLoading ? loadingText : emptyMessage}
                                     </Td>
                                 </Tr>
                             )}
@@ -2007,7 +2635,7 @@ export function DataTable<T extends Record<string, any>>({
                         {rowSelectionEnabled && selectedRecordCount > 0 && (
                             <div className="absolute inset-0 z-10 flex items-center justify-between gap-3 px-4 bg-primary-600/95 text-white backdrop-blur-[1px]">
                                 <span className="text-sm font-medium">
-                                    {totalRecordCount} Kayıttan {selectedRecordCount} Kayıt Seçildi
+                                    {totalRecordCount} {itemLabel} içinden {selectedRecordCount} kayıt seçildi
                                 </span>
                                 <div className="flex items-center gap-2">
                                     {onTransferSelected && (
@@ -2076,7 +2704,7 @@ export function DataTable<T extends Record<string, any>>({
                                         </PopoverButton>
                                     )}
                                     <Button
-                                        onClick={() => setRowSelection({})}
+                                        onClick={() => handleRowSelectionChange({})}
                                         variant="outlined"
                                         className="px-3 py-1 text-xs font-semibold !border-white !text-white hover:!bg-white/10"
                                     >
@@ -2097,20 +2725,20 @@ export function DataTable<T extends Record<string, any>>({
                                 }}
                                 className="rounded-md border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-700 px-2 py-1 text-sm text-gray-700 dark:text-gray-300"
                             >
-                                {[10, 20, 50, 100, 250, 500].map((pageSize) => (
+                                {pageSizeOptions.map((pageSize) => (
                                     <option key={pageSize} value={pageSize}>
                                         {pageSize}
                                     </option>
                                 ))}
                             </select>
                             <span className="text-sm text-gray-700 dark:text-gray-300">
-                                {(isManualPagination ? totalRowCount ?? 0 : table.getFilteredRowModel().rows.length)} kayıttan{' '}
-                                {((isManualPagination ? totalRowCount ?? 0 : table.getFilteredRowModel().rows.length) === 0)
+                                {(isManualPagination ? effectivePageRowCount ?? 0 : table.getFilteredRowModel().rows.length)} {itemLabel} içinden{' '}
+                                {((isManualPagination ? effectivePageRowCount ?? 0 : table.getFilteredRowModel().rows.length) === 0)
                                     ? 0
                                     : table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}-
                                 {Math.min(
                                     (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-                                    isManualPagination ? totalRowCount ?? 0 : table.getFilteredRowModel().rows.length
+                                    isManualPagination ? effectivePageRowCount ?? 0 : table.getFilteredRowModel().rows.length
                                 )}{' '}
                                 arası gösteriliyor
                             </span>
@@ -2218,6 +2846,12 @@ export function DataTable<T extends Record<string, any>>({
     );
 }
 
+export const DataTable = forwardRef(DataTableInner) as <
+    T extends Record<string, any>,
+>(
+    props: DataTableProps<T> & RefAttributes<DataTableHandle>,
+) => ReactElement;
+
 function VirtualPad({ height }: { height: number }) {
     if (height <= 0) {
         return null;
@@ -2246,6 +2880,26 @@ function HeaderSort<T>({
     enableColumnHeaderFilter: boolean;
 }) {
     const [isDragging, setIsDragging] = useState(false);
+    const usesCustomHeader = typeof header.column.columnDef.header === "function";
+
+    if (usesCustomHeader) {
+        return (
+            <div className="flex h-7 min-w-0 items-center gap-0.5">
+                <span className="min-w-0 flex-1 truncate text-sm">
+                    {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                </span>
+                {enableColumnHeaderFilter ? (
+                    <FacetColumnFilter
+                        column={header.column}
+                        table={table}
+                        valueMappers={valueMappers}
+                    />
+                ) : null}
+            </div>
+        );
+    }
 
     const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
         e.dataTransfer.effectAllowed = 'move';

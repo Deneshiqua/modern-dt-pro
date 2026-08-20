@@ -1,6 +1,6 @@
 {
   "name": "modern-dt-pro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Modern DataTable Pro",
   "author": "Deniz",
   "license": "MIT",
@@ -38,6 +38,7 @@
     "dev": "tsup --watch",
     "demo": "vite --config demo/vite.config.ts",
     "demo:build": "vite build --config demo/vite.config.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm typecheck && pnpm build"
   },
@@ -64,7 +65,8 @@
     "tailwindcss": "^4.1.4",
     "tsup": "^8.5.0",
     "typescript": "~5.8.3",
-    "vite": "^6.3.2"
+    "vite": "^6.3.2",
+    "vitest": "^4.1.11"
   },
   "keywords": [
     "react",

@@ -51,6 +51,7 @@ export function Documentation() {
         <a href="#kurulum">Kurulum</a>
         <a href="#ozellikler">Özellikler</a>
         <a href="#kullanim">Kullanım</a>
+        <a href="#data-source">DataSource</a>
         <a href="#props">Props</a>
         <a href="#kolonlar">Kolonlar</a>
         <a href="#templateler">Template'ler</a>
@@ -69,10 +70,10 @@ export function Documentation() {
 
       <section className="card docs-section" id="kurulum">
         <h2>Kurulum</h2>
-        <p>Paket henüz npm'e yayınlanmadı. Yerel klasörden bağla:</p>
+        <p>Paketi npm üzerinden veya yerel geliştirme klasöründen kur:</p>
         <CodeBlock>{`pnpm add modern-dt-pro
-# veya yerel:
-pnpm add ../packages/modern-dt-pro`}
+# yerel gelistirme:
+pnpm link ../modern-dt-pro`}
         </CodeBlock>
         <h3>Stil</h3>
         <p>
@@ -124,6 +125,121 @@ import "modern-dt-pro/styles.css";
         </CodeBlock>
       </section>
 
+      <section className="card docs-section" id="data-source">
+        <h2>Remote DataSource</h2>
+        <p>
+          <code className="docs-code-inline">dataSource</code> verildiğinde{" "}
+          <code className="docs-code-inline">data</code> opsiyoneldir. Tablo filtre,
+          arama, sıralama, sayfalama ve gruplama state'ini{" "}
+          <code className="docs-code-inline">DataTableLoadOptions</code> olarak{" "}
+          <code className="docs-code-inline">load(options, {"{ signal }"})</code>{" "}
+          fonksiyonuna iletir. Yeni istek başlayınca önceki{" "}
+          <code className="docs-code-inline">AbortSignal</code> iptal edilir.
+          Tek alanlı veya birleşik stabil satır kimliği için{" "}
+          <code className="docs-code-inline">dataSource.key</code> değerine kolon adı
+          ya da kolon adı dizisi verilebilir.
+        </p>
+        <CodeBlock>{`import { useMemo, useRef } from "react";
+import {
+  DataTable,
+  serializeLoadOptions,
+  type DataTableDataSource,
+  type DataTableHandle,
+} from "modern-dt-pro";
+
+const tableRef = useRef<DataTableHandle>(null);
+const dataSource = useMemo<DataTableDataSource<Row>>(() => ({
+  key: "id",
+  async load(options, { signal }) {
+    const query = serializeLoadOptions(options, {
+      parameterNames: {
+        skip: "offset",
+        take: "limit",
+        requireTotalCount: "includeCount",
+      },
+      transformValue: (value, name) =>
+        name === "searchValue" ? String(value).trim() : value,
+      omitEmpty: true,
+    });
+    const response = await fetch(\`/api/rows?\${query}\`, { signal });
+    return response.json();
+  },
+}), []);
+
+<DataTable
+  ref={tableRef}
+  dataSource={dataSource}
+  remoteOperations
+  defaultGrouping={["category", "city"]}
+/>
+
+await tableRef.current?.reload();`}
+        </CodeBlock>
+        <p>
+          <code className="docs-code-inline">remoteOperations</code> değeri{" "}
+          <code className="docs-code-inline">true</code> olduğunda{" "}
+          <code className="docs-code-inline">filtering</code>,{" "}
+          <code className="docs-code-inline">sorting</code>,{" "}
+          <code className="docs-code-inline">paging</code>,{" "}
+          <code className="docs-code-inline">grouping</code>,{" "}
+          <code className="docs-code-inline">groupPaging</code>,{" "}
+          <code className="docs-code-inline">summary</code> ve{" "}
+          <code className="docs-code-inline">searching</code> bayraklarının tümünü
+          açar. Yalnızca seçilen işlemleri sunucuya taşımak için nesne biçimi kullanılır.
+        </p>
+        <CodeBlock>{`remoteOperations={{
+  filtering: true,
+  sorting: true,
+  paging: true,
+  grouping: true,
+  groupPaging: true,
+  searching: true,
+}}`}
+        </CodeBlock>
+        <h3>LoadOptions ve sonuç sözleşmesi</h3>
+        <p>
+          Load seçenekleri <code className="docs-code-inline">skip</code>,{" "}
+          <code className="docs-code-inline">take</code>,{" "}
+          <code className="docs-code-inline">sort</code>,{" "}
+          <code className="docs-code-inline">filter</code>, arama alanları,{" "}
+          <code className="docs-code-inline">group</code>,{" "}
+          <code className="docs-code-inline">groupPath</code>, count/summary
+          istekleri, <code className="docs-code-inline">select</code> ve{" "}
+          <code className="docs-code-inline">userData</code> taşıyabilir.
+        </p>
+        <CodeBlock>{`type DataTableLoadResult<T> = {
+  data: T[] | DataTableGroupItem<T>[];
+  totalCount?: number;
+  groupCount?: number;
+  summary?: unknown[];
+  userData?: unknown;
+};
+
+type DataTableGroupItem<T> = {
+  key: unknown;
+  items?: T[] | DataTableGroupItem<T>[] | null;
+  count?: number;
+  summary?: unknown[];
+};`}
+        </CodeBlock>
+        <p>
+          Lazy gruplamada ilk yanıtta <code className="docs-code-inline">items</code>{" "}
+          alanını <code className="docs-code-inline">null</code> veya{" "}
+          <code className="docs-code-inline">undefined</code> bırak. Grup açıldığında
+          yeni isteğin <code className="docs-code-inline">groupPath</code> alanı tüm
+          üst grup anahtarlarını sırayla taşır. Ara seviyelerde grup öğeleri, son
+          seviyede doğrudan veri satırları dönebilir. Üst seviye grup sayfalaması{" "}
+          <code className="docs-code-inline">groupCount</code>, toplam kayıt bilgisi{" "}
+          <code className="docs-code-inline">totalCount</code> ile çalışır.
+        </p>
+        <p>
+          Mevcut kontrollü kullanım geriye uyumludur:{" "}
+          <code className="docs-code-inline">type="server"</code>,{" "}
+          <code className="docs-code-inline">data</code>, kontrollü pagination,
+          sorting ve filter state'leri birlikte kullanılmaya devam edebilir.
+        </p>
+      </section>
+
       <section className="card docs-section" id="props">
         <h2>Props</h2>
         <p>Tüm <code className="docs-code-inline">DataTable</code> parametreleri:</p>
@@ -148,7 +264,10 @@ import "modern-dt-pro/styles.css";
       <section className="card docs-section" id="kolonlar">
         <h2>Kolonlar</h2>
         <p>
-          Kolonlar ilk satırın anahtarlarından üretilir.{" "}
+          Kolonlar varsayılan olarak ilk satırın anahtarlarından üretilir. TanStack{" "}
+          <code className="docs-code-inline">ColumnDef[]</code> kullanmak için{" "}
+          <code className="docs-code-inline">columns</code> verilebilir. Bu durumda
+          özel başlık, hücre, accessor ve aksiyon kolonları doğrudan kullanılır.{" "}
           <code className="docs-code-inline">visibleColumns</code> verilirse yalnızca
           bu liste başlangıçta görünür; kullanıcı Kolonları Seç ile değiştirebilir
           (<code className="docs-code-inline">{"enableColumnPicker={false}"}</code> ile
@@ -169,6 +288,23 @@ import "modern-dt-pro/styles.css";
     status: { 0: "Taslak", 1: "Aktif", 2: "Arşivlendi" },
   }}
 />`}
+        </CodeBlock>
+        <CodeBlock>{`import type { ColumnDef } from "@tanstack/react-table";
+
+const columns: ColumnDef<Row>[] = [
+  {
+    accessorKey: "name",
+    header: "Ad",
+    cell: ({ row }) => <strong>{row.original.name}</strong>,
+  },
+  {
+    id: "actions",
+    header: "İşlemler",
+    cell: ({ row }) => <button onClick={() => edit(row.original)}>Düzenle</button>,
+  },
+];
+
+<DataTable data={rows} columns={columns} getRowId={(row) => String(row.id)} />`}
         </CodeBlock>
         <p>
           Sayısal kolonlar otomatik sağa hizalanır. Checkbox seçim kolonu{" "}
@@ -257,6 +393,21 @@ import "modern-dt-pro/styles.css";
   defaultGrouping={["category"]}
   defaultSorting={[{ id: "createdAt", desc: false }]}
   hideInGroupRow={["description"]}
+/>`}
+        </CodeBlock>
+        <p>
+          Kontrollü sıralama için <code className="docs-code-inline">sorting</code> ve{" "}
+          <code className="docs-code-inline">onSortingChange</code> kullanılır. Veriyi
+          API veya veritabanı sıralıyorsa{" "}
+          <code className="docs-code-inline">manualSorting</code> açılmalıdır.
+        </p>
+        <CodeBlock>{`const [sorting, setSorting] = useState<SortingState>([]);
+
+<DataTable
+  data={rows}
+  sorting={sorting}
+  onSortingChange={setSorting}
+  manualSorting
 />`}
         </CodeBlock>
         <p>
@@ -360,6 +511,22 @@ import "modern-dt-pro/styles.css";
 />`}
         </CodeBlock>
         <p>
+          Seçimi dışarıdan yönetmek ve sıfırlamak için{" "}
+          <code className="docs-code-inline">rowSelection</code>,{" "}
+          <code className="docs-code-inline">onRowSelectionChange</code> ve stabil
+          satır anahtarı için <code className="docs-code-inline">getRowId</code> kullanılır.
+        </p>
+        <CodeBlock>{`const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+<DataTable
+  data={rows}
+  enableRowSelection
+  rowSelection={rowSelection}
+  onRowSelectionChange={setRowSelection}
+  getRowId={(row) => String(row.id)}
+/>`}
+        </CodeBlock>
+        <p>
           Sil ve aktar butonları yalnızca ilgili callback verilirse ve en az bir
           satır seçiliyse görünür. Onay popover'ı vardır.
         </p>
@@ -368,7 +535,9 @@ import "modern-dt-pro/styles.css";
       <section className="card docs-section" id="sayfalama">
         <h2>Sayfalama</h2>
         <p>
-          Varsayılan istemci sayfalamasıdır (10 / 20 / 50 / 100 / 250 / 500). Dikey
+          Varsayılan istemci sayfalamasıdır. Seçenekler{" "}
+          <code className="docs-code-inline">pageSizeOptions</code>, başlangıç değeri{" "}
+          <code className="docs-code-inline">initialPageSize</code> ile belirlenir. Dikey
           kaydırma yalnızca <code className="docs-code-inline">tbody</code> içindedir;
           başlık ve sayfalama sabit kalır.
         </p>
@@ -398,6 +567,9 @@ import "modern-dt-pro/styles.css";
   pagination={pagination}
   onPaginationChange={setPagination}
   totalRowCount={total}
+  sorting={sorting}
+  onSortingChange={setSorting}
+  manualSorting
 />`}
         </CodeBlock>
         <p>
@@ -534,6 +706,16 @@ type PaginationState = { pageIndex: number; pageSize: number };`}
   toolbarExtra={<button type="button">Yenile</button>}
 />`}
         </CodeBlock>
+        <h3>Yüklenme ve yenileme</h3>
+        <CodeBlock>{`<DataTable
+  data={rows}
+  isLoading={isLoading}
+  loadingText="Kayıtlar yükleniyor..."
+  onRefresh={loadRows}
+  isRefreshing={isRefreshing}
+  itemLabel="kayıt"
+/>`}
+        </CodeBlock>
       </section>
     </div>
   );
@@ -565,6 +747,18 @@ const FEATURES = [
     desc: "İstemci sayfası veya type=\"server\" ile sunucu sayfalaması.",
   },
   {
+    title: "Kontrollü state",
+    desc: "Sıralama, satır seçimi, filtre ve sayfalama uygulama state'iyle yönetilebilir.",
+  },
+  {
+    title: "Özel kolonlar",
+    desc: "Otomatik kolonlara alternatif olarak TanStack ColumnDef tanımları kullanılabilir.",
+  },
+  {
+    title: "Yüklenme ve yenileme",
+    desc: "Yüklenme mesajı, toolbar yenileme aksiyonu ve yenileniyor durumu.",
+  },
+  {
     title: "SQL",
     desc: "Toolbar'da sorgu gösterimi ve kopyalama.",
   },
@@ -587,10 +781,19 @@ const FEATURES = [
 ];
 
 const DATA_PROPS: PropRow[] = [
-  { name: "data", type: "T[]", def: "—", desc: "Tablo satırları. Zorunlu." },
+  { name: "data", type: "T[]", def: "—", desc: "Yerel tablo satırları. dataSource varsa opsiyonel." },
+  { name: "dataSource", type: "DataTableDataSource<T>", def: "—", desc: "AbortSignal destekli remote load sözleşmesi ve stabil key tanımı." },
+  { name: "remoteOperations", type: "boolean | DataTableRemoteOperationSettings", def: "false", desc: "Remote filtre, sıralama, sayfalama, gruplama, group paging, summary ve arama bayrakları." },
+  { name: "loadDebounceMs", type: "number", def: "300", desc: "Remote filtre ve arama isteklerinin debounce süresi." },
   { name: "title", type: "string", def: "—", desc: "Toolbar başlığı ve export dosya adı kökü." },
   { name: "emptyMessage", type: "string", def: '"Gösterilecek veri bulunamadı"', desc: "data boşken tbody metni." },
   { name: "maxHeight", type: "string", def: '"auto"', desc: "Gövde tavan yüksekliği. auto ise kapsayıcıyı doldurur." },
+  { name: "className", type: "string", def: "—", desc: "DataTable kök kapsayıcı sınıfı." },
+  { name: "isLoading", type: "boolean", def: "false", desc: "Yüklenme durumunda loadingText gösterir." },
+  { name: "loadingText", type: "string", def: '"Yükleniyor..."', desc: "Yüklenme durumundaki tablo mesajı." },
+  { name: "onRefresh", type: "() => void", def: "—", desc: "Verilirse toolbar yenileme butonu gösterilir." },
+  { name: "isRefreshing", type: "boolean", def: "false", desc: "Yenileme butonunu kilitler ve ikonunu döndürür." },
+  { name: "itemLabel", type: "string", def: '"kayıt"', desc: "Seçim ve sayfalama özetlerindeki kayıt etiketi." },
   { name: "type", type: '"server" | "portal" | null', def: "null", desc: "server + pagination + totalRowCount ile sunucu sayfalaması." },
   { name: "toolbarExtra", type: "ReactNode", def: "—", desc: "Sağ toolbar'a ek içerik." },
   { name: "enableTableViewMenu", type: "boolean", def: "true", desc: "Toolbar Tablo Görünümü menüsü. Görünüm ve özellik anahtarlarını içerir." },
@@ -599,6 +802,7 @@ const DATA_PROPS: PropRow[] = [
 ];
 
 const COLUMN_PROPS: PropRow[] = [
+  { name: "columns", type: "ColumnDef<T, any>[]", def: "—", desc: "Verilirse otomatik kolon üretimi yerine TanStack kolon tanımları kullanılır." },
   { name: "excludeColumns", type: "(keyof T)[]", def: "[]", desc: "Kolon olarak üretilmez (ör. id)." },
   { name: "visibleColumns", type: "(keyof T)[]", def: "—", desc: "Başlangıçta görünen kolonlar. Verilirse diğerleri gizli başlar." },
   { name: "columnLabels", type: "Record<string, string>", def: "{}", desc: "Kolon id → başlık metni." },
@@ -617,6 +821,9 @@ const GROUP_PROPS: PropRow[] = [
   { name: "enableGrouping", type: "boolean", def: "true", desc: "Sürükle-bırak gruplama alanı ve grup kolonunu sabitleme." },
   { name: "defaultGrouping", type: "string[]", def: "[]", desc: "Açılışta gruplanacak kolon id'leri." },
   { name: "defaultSorting", type: "SortingState", def: "[]", desc: "Açılış sıralaması. Örnek: [{ id: \"tarih\", desc: true }]." },
+  { name: "sorting", type: "SortingState", def: "—", desc: "Kontrollü sıralama state'i." },
+  { name: "onSortingChange", type: "OnChangeFn<SortingState>", def: "—", desc: "Kontrollü sıralama değişim callback'i." },
+  { name: "manualSorting", type: "boolean", def: "false", desc: "Sunucudan sıralı gelen veride istemci sıralamasını kapatır." },
   { name: "hideInGroupRow", type: "string[]", def: "[]", desc: "Grup ve genel toplam satırında gizlenecek kolonlar." },
 ];
 
@@ -635,6 +842,9 @@ const EXPORT_PROPS: PropRow[] = [
 
 const SELECTION_PROPS: PropRow[] = [
   { name: "enableRowSelection", type: "boolean", def: "false", desc: "Satır ve grup checkbox'ları." },
+  { name: "rowSelection", type: "RowSelectionState", def: "—", desc: "Kontrollü satır seçim state'i." },
+  { name: "onRowSelectionChange", type: "OnChangeFn<RowSelectionState>", def: "—", desc: "Kontrollü seçim değişim callback'i." },
+  { name: "getRowId", type: "(row, index, parent?) => string", def: "—", desc: "Yenileme ve sunucu sayfalarında stabil satır kimliği." },
   { name: "onSelectionChange", type: "(rows: T[]) => void", def: "—", desc: "Seçilen veri satırları (grup satırı yok)." },
   { name: "onDeleteSelected", type: "() => void | Promise<void>", def: "—", desc: "Seçilenleri sil. Verilirse sil butonu çıkar." },
   { name: "deleteSelectedPopoverDescription", type: "ReactNode", def: '"N seçili kayıt silinecek..."', desc: "Sil onay metni." },
@@ -647,6 +857,8 @@ const SELECTION_PROPS: PropRow[] = [
 const PAGINATION_PROPS: PropRow[] = [
   { name: "pagination", type: "PaginationState", def: "{ pageIndex: 0, pageSize: 10 }", desc: "Kontrollü sayfa. type=\"server\" ve totalRowCount ile sunucu modu." },
   { name: "onPaginationChange", type: "(pagination: PaginationState) => void", def: "—", desc: "Sayfa veya sayfa boyutu değişince." },
+  { name: "initialPageSize", type: "number", def: "10", desc: "Kontrolsüz sayfalamada başlangıç satır sayısı." },
+  { name: "pageSizeOptions", type: "number[]", def: "[10, 20, 50, 100]", desc: "Sayfa başına satır seçenekleri." },
   { name: "totalRowCount", type: "number", def: "—", desc: "Sunucu sayfalamasında toplam kayıt sayısı." },
 ];
 
@@ -656,6 +868,10 @@ const MISC_PROPS: PropRow[] = [
 ];
 
 const HELPER_PROPS: PropRow[] = [
+  { name: "serializeLoadOptions", type: "(options, config?) => URLSearchParams", def: "—", desc: "LoadOptions değerlerini URLSearchParams'a çevirir; parameterNames, transformValue ve omitEmpty destekler." },
+  { name: "columnFiltersToExpression", type: "(filters) => DataTableFilterExpression | undefined", def: "—", desc: "TanStack kolon filtrelerini remote filtre ifadesine çevirir." },
+  { name: "buildDataTableLoadOptions", type: "(state) => DataTableLoadOptions", def: "—", desc: "Filtre, sıralama, sayfalama, arama ve gruplama state'inden load options üretir." },
+  { name: "resolveRemoteOperations", type: "(value) => Required<settings>", def: "—", desc: "boolean veya nesne remoteOperations değerini tüm bayraklara çözümler." },
   { name: "columnFilter", type: "FilterFn<any>", def: "—", desc: "TanStack kolon filterFn. Facet + metin operatörleri." },
   { name: "buildColumnFilterSqlClause", type: "(columnId, filterValue, escapeSqlValue, buildSqlColumnName) => string | null", def: "—", desc: "Filtre değerinden SQL WHERE parçası üretir." },
   { name: "getCellFilterMeta", type: "(columnId, rawValue, valueMappers?) => { id, label, isBlank }", def: "—", desc: "Facet id/etiket. Boş değer için BLANK_FILTER_ID." },
@@ -667,6 +883,12 @@ const HELPER_PROPS: PropRow[] = [
 
 const TYPE_ROWS: PropRow[] = [
   { name: "DataTableProps<T>", type: "interface", def: "—", desc: "DataTable prop tipi." },
+  { name: "DataTableDataSource<T>", type: "interface", def: "—", desc: "key ve load(options, { signal }) remote veri sözleşmesi." },
+  { name: "DataTableLoadOptions", type: "object", def: "—", desc: "Sayfalama, filtre, arama, sıralama, gruplama, summary ve seçim alanları." },
+  { name: "DataTableLoadResult<T>", type: "object", def: "—", desc: "data, totalCount, groupCount, summary ve userData sonucu." },
+  { name: "DataTableGroupItem<T>", type: "object", def: "—", desc: "Remote grup anahtarı, lazy items, count ve summary." },
+  { name: "DataTableRemoteOperations", type: "boolean | object", def: "—", desc: "Uzak işlem bayrakları." },
+  { name: "DataTableHandle", type: "{ reload(): Promise<void> }", def: "—", desc: "Ref üzerinden zorunlu yeniden yükleme API'si." },
   { name: "DataTableCellTemplate<T>", type: "(CellContext<T, unknown>) => ReactNode", def: "—", desc: "Normal hücre renderer tipi." },
   { name: "DataTableGroupCellTemplate<T>", type: "(CellContext<T, unknown>) => ReactNode", def: "—", desc: "Grup hücresi renderer tipi." },
   { name: "DataTableHeaderTemplate<T>", type: "(HeaderContext<T, unknown>) => ReactNode", def: "—", desc: "Başlık renderer tipi." },

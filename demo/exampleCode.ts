@@ -32,6 +32,40 @@ export const SELECTION_CODE = `import { DataTable } from "modern-dt-pro";
   onTransferSelected={handleTransfer}
 />`;
 
+export const CONTROLLED_SERVER_CODE = `import { useMemo, useRef } from "react";
+import {
+  DataTable,
+  serializeLoadOptions,
+  type DataTableDataSource,
+  type DataTableHandle,
+} from "modern-dt-pro";
+
+const tableRef = useRef<DataTableHandle>(null);
+const dataSource = useMemo<DataTableDataSource<Row>>(() => ({
+  key: "id",
+  async load(options, { signal }) {
+    const query = serializeLoadOptions(options, {
+      parameterNames: { take: "limit", skip: "offset" },
+    });
+    const response = await fetch(\`/api/rows?\${query}\`, { signal });
+    return response.json();
+  },
+}), []);
+
+<DataTable
+  ref={tableRef}
+  dataSource={dataSource}
+  remoteOperations
+  defaultGrouping={["category", "city"]}
+  initialPageSize={5}
+  pageSizeOptions={[5, 10, 20]}
+  itemLabel="kayıt"
+/>
+
+<button onClick={() => void tableRef.current?.reload()}>
+  Yenile
+</button>`;
+
 export const MAPPED_CODE = `import { DataTable } from "modern-dt-pro";
 
 <DataTable

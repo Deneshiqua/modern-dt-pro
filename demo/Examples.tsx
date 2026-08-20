@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 
 import { DataTable, type NotifyType } from "modern-dt-pro";
 import { ExampleFrame } from "./ExampleFrame";
+import { createRemoteDemoDataSource } from "./remoteDataSource";
 import {
   BASIC_CODE,
+  CONTROLLED_SERVER_CODE,
   EMPTY_CODE,
   GROUPED_CODE,
   MAPPED_CODE,
@@ -28,6 +30,11 @@ export function Examples({ onNotify }: ExamplesProps) {
   const [rows, setRows] = useState<DemoRow[]>(() => createDemoRows());
   const [selected, setSelected] = useState<DemoRow[]>([]);
   const previewRows = useMemo(() => rows.slice(0, 16), [rows]);
+  const serverSource = useMemo(() => createDemoRows(48), []);
+  const remoteDataSource = useMemo(
+    () => createRemoteDemoDataSource(serverSource),
+    [serverSource],
+  );
 
   const handleDeleteSelected = async () => {
     const ids = new Set(selected.map((row) => row.id));
@@ -38,6 +45,10 @@ export function Examples({ onNotify }: ExamplesProps) {
 
   const handleTransferSelected = async () => {
     onNotify("success", `${selected.length} kayıt aktarıldı`);
+  };
+
+  const handleServerRefresh = () => {
+    onNotify("success", "Sunucu verileri yenilendi");
   };
 
   return (
@@ -90,6 +101,29 @@ export function Examples({ onNotify }: ExamplesProps) {
           deleteSelectedPopoverDescription={`${selected.length} seçili kayıt silinecek. Onaylıyor musunuz?`}
           onTransferSelected={handleTransferSelected}
           transferSelectedPopoverDescription={`${selected.length} seçili kayıt aktarılacak. Onaylıyor musunuz?`}
+        />
+      </ExampleFrame>
+
+      <ExampleFrame
+        title="Remote DataSource ve lazy gruplama"
+        description="Filtre, arama, sıralama ve sayfalama loadOptions ile çalışır. Kategori ve şehir grupları açıldıkça AbortSignal destekli olarak yüklenir."
+        code={CONTROLLED_SERVER_CODE}
+      >
+        <DataTable
+          dataSource={remoteDataSource}
+          remoteOperations
+          title="Remote ürün kayıtları"
+          excludeColumns={["id"]}
+          columnLabels={COLUMN_LABELS}
+          defaultGrouping={["category", "city"]}
+          defaultSorting={[{ id: "name", desc: false }]}
+          enableRowSelection
+          initialPageSize={5}
+          pageSizeOptions={[5, 10, 20]}
+          itemLabel="kayıt"
+          onRefresh={handleServerRefresh}
+          loadingText="Sunucu verileri yükleniyor..."
+          onNotify={onNotify}
         />
       </ExampleFrame>
 

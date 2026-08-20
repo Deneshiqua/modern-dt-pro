@@ -468,6 +468,10 @@
   bottom: 0;
   z-index: 30;
   width: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: col-resize;
   touch-action: none;
   user-select: none;
