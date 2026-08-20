@@ -1417,6 +1417,7 @@ function DataTableInner<T extends Record<string, any>>({
         manualPagination: isManualPagination,
         manualSorting: isManualSorting,
         manualGrouping: false,
+        autoResetPageIndex: false,
         rowCount: isManualPagination ? effectivePageRowCount : undefined,
         getRowId: effectiveGetRowId,
         getCoreRowModel: getCoreRowModel(),
