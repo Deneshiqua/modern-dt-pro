@@ -53,7 +53,10 @@ import type {
     ExportOptions,
     ExportScope,
 } from "./types";
-import { buildDataTableLoadOptions } from "./data-source/buildLoadOptions";
+import {
+    buildDataTableLoadOptions,
+    normalizeDataTableGlobalFilter,
+} from "./data-source/buildLoadOptions";
 import { createDataSourceRowId } from "./data-source/createDataSourceRowId";
 import { resolveRemoteOperations } from "./data-source/remoteOperations";
 import {
@@ -631,6 +634,15 @@ function DataTableInner<T extends Record<string, any>>({
 
         setInternalColumnFilters(nextColumnFilters);
         onColumnFiltersChange?.(nextColumnFilters);
+    };
+
+    const handleGlobalFilterChange: OnChangeFn<string> = (updaterOrValue) => {
+        setGlobalFilter((current) => {
+            const nextGlobalFilter = typeof updaterOrValue === "function"
+                ? updaterOrValue(current)
+                : updaterOrValue;
+            return normalizeDataTableGlobalFilter(nextGlobalFilter);
+        });
     };
 
     const handlePaginationChange: OnChangeFn<PaginationState> = (updaterOrValue) => {
@@ -1388,7 +1400,7 @@ function DataTableInner<T extends Record<string, any>>({
         onColumnFiltersChange: handleColumnFiltersChange,
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
-        onGlobalFilterChange: setGlobalFilter,
+        onGlobalFilterChange: handleGlobalFilterChange,
         getFilteredRowModel: isManualFiltering ? undefined : getFilteredRowModel(),
         globalFilterFn: fuzzyFilter,
         onColumnVisibilityChange: setColumnVisibility,
@@ -2023,7 +2035,7 @@ function DataTableInner<T extends Record<string, any>>({
                     <CollapsibleSearch
                         placeholder="Ara..."
                         value={globalFilter ?? ""}
-                        onChange={(e) => setGlobalFilter(e.target.value)}
+                        onChange={(e) => handleGlobalFilterChange(e.target.value)}
                     />
                     ) : null}
                     {columnPickerEnabled ? (

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { DataTableGroupItem } from "../types";
-import { buildDataTableLoadOptions } from "./buildLoadOptions";
+import {
+  buildDataTableLoadOptions,
+  normalizeDataTableGlobalFilter,
+} from "./buildLoadOptions";
 import { columnFiltersToExpression } from "./columnFiltersToExpression";
 import {
   flattenRemoteGroups,
@@ -112,6 +115,30 @@ describe("buildDataTableLoadOptions", () => {
         { selector: "city", desc: false, isExpanded: true },
       ],
       requireGroupCount: true,
+    });
+  });
+
+  it("global filtre sıfırlandığında tanımsız değeri boş arama olarak işler", () => {
+    expect(normalizeDataTableGlobalFilter(undefined)).toBe("");
+    expect(normalizeDataTableGlobalFilter(null)).toBe("");
+    expect(normalizeDataTableGlobalFilter("arama")).toBe("arama");
+
+    const loadOptions = buildDataTableLoadOptions({
+      columnFilters: [],
+      sorting: [],
+      pagination: { pageIndex: 0, pageSize: 10 },
+      globalFilter: undefined,
+      grouping: [],
+      remoteOperations: resolveRemoteOperations({
+        paging: true,
+        searching: true,
+      }),
+    });
+
+    expect(loadOptions).toEqual({
+      skip: 0,
+      take: 10,
+      requireTotalCount: true,
     });
   });
 });

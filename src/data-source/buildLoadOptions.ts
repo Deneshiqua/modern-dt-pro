@@ -13,11 +13,15 @@ export type BuildDataTableLoadOptionsInput = {
   columnFilters: ColumnFiltersState;
   sorting: SortingState;
   pagination: PaginationState;
-  globalFilter: string;
+  globalFilter: unknown;
   grouping: GroupingState;
   searchExpr?: string[];
   remoteOperations: ResolvedDataTableRemoteOperations;
 };
+
+export function normalizeDataTableGlobalFilter(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
 export function buildDataTableLoadOptions({
   columnFilters,
@@ -50,7 +54,7 @@ export function buildDataTableLoadOptions({
     loadOptions.requireTotalCount = true;
   }
 
-  const searchValue = globalFilter.trim();
+  const searchValue = normalizeDataTableGlobalFilter(globalFilter).trim();
   if (remoteOperations.searching && searchValue) {
     if (searchExpr?.length) {
       loadOptions.searchExpr = searchExpr;
