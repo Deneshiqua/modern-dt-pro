@@ -1,18 +1,15 @@
 import {
-    AggregationFn,
     ColumnDef,
     ColumnFiltersState,
     ColumnSizingState,
     ExpandedState,
     FilterFn,
     GroupingState,
-    Header,
     OnChangeFn,
     PaginationState,
     Row,
     RowSelectionState,
     SortingState,
-    Table as TanstackTable,
     VisibilityState,
     flexRender,
     getCoreRowModel,
@@ -29,22 +26,24 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CodeBracketSquareIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TableCellsIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
 import { Button, Card, PopoverButton, TBody, THead, Table, Td, Th, Tr } from "./ui";
 import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { CSSProperties, DragEvent, Fragment, ReactNode, UIEvent, forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardedRef, type HTMLProps, type ReactElement, type RefAttributes } from "react";
-import { Menu, MenuButton, MenuItem, MenuItems, Transition } from "@headlessui/react";
+import { CSSProperties, DragEvent, UIEvent, forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardedRef, type MouseEvent as ReactMouseEvent, type ReactElement, type RefAttributes } from "react";
 import { createPortal } from "react-dom";
 
 import { CollapsibleSearch } from "./components/CollapsibleSearch";
 import { TableColumnVisibility } from "./components/TableColumnVisibility";
 import { TableViewMenu, type TableViewSettings } from "./components/TableViewMenu";
+import { ColumnHeaderContextMenu } from "./components/ColumnHeaderContextMenu";
 import { ColumnResizeHandle } from "./components/ColumnResizeHandle";
-import { TableSortIcon } from "./components/TableSortIcon";
+import { ExportMenuButton } from "./components/ExportMenuButton";
+import { HeaderSort } from "./components/HeaderSort";
+import { IndeterminateCheckbox } from "./components/IndeterminateCheckbox";
+import { VirtualPad } from "./components/VirtualPad";
 import {
     FacetColumnFilter,
     TextColumnFilter,
     columnFilter,
 } from "./filters/ColumnHeaderFilters";
 import type {
-    DataTableAggregate,
     DataTableGroupItem,
     DataTableHandle,
     DataTableLoadOptions,
@@ -71,96 +70,38 @@ import {
 } from "./data-source/remoteGroups";
 import { notify } from "./utils/notify";
 import { measureColumnAutoFitWidth, COLUMN_FILTER_MIN_WIDTH } from "./utils/measureColumnWidth";
+import { formatCellValue, formatColumnHeader, isFiniteNumber } from "./utils/formatCellValue";
+import { loadPersistedViewSettings, savePersistedViewSettings } from "./utils/persistViewSettings";
+import {
+    avgAggregationFn,
+    countAggregationFn,
+    emptyAggregationFn,
+    fuzzyFilter,
+    resolveAggregationFn,
+    sumAggregationFn,
+} from "./utils/tableAggregations";
+import {
+    SELECT_COLUMN_CELL_CLASS,
+    SELECT_COLUMN_STYLE,
+    SELECT_COLUMN_WIDTH,
+    getStickyCellClassName,
+    getStickyCellStyle,
+    isSelectColumnId,
+    reorderPinnedColumns,
+    resolveStickyKind,
+    type StickyCellKind,
+} from "./utils/stickyColumns";
+import { countDataRowsInGroup, getColumnSelector, getSelectableLeafRows } from "./utils/tableRowHelpers";
+import {
+    buildExportFilename,
+    exportTableToExcel,
+    exportTableToJson,
+    getExportableRows,
+} from "./utils/exportTable";
 import clsx from "clsx";
-import { rankItem } from "@tanstack/match-sorter-utils";
-import * as XLSX from "xlsx";
 
 // ----------------------------------------------------------------------
 
-const fuzzyFilter: FilterFn<any> = (row, columnId, value, addMeta) => {
-    const itemRank = rankItem(row.getValue(columnId), value);
-    addMeta({ itemRank });
-    return itemRank.passed;
-};
-
-// Aggregate fonksiyonları
-const sumAggregationFn: AggregationFn<any> = (columnId, leafRows) => {
-    return leafRows
-        .filter((row) => !isRemoteGroupPlaceholder(row.original))
-        .reduce((sum, row) => {
-        const value = row.getValue(columnId);
-        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-        return sum + (isNaN(numValue) ? 0 : numValue);
-    }, 0);
-};
-
-const avgAggregationFn: AggregationFn<any> = (columnId, leafRows) => {
-    const dataRows = leafRows.filter(
-        (row) => !isRemoteGroupPlaceholder(row.original),
-    );
-    const sum = dataRows.reduce((sum, row) => {
-        const value = row.getValue(columnId);
-        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-        return sum + (isNaN(numValue) ? 0 : numValue);
-    }, 0);
-    return dataRows.length > 0 ? sum / dataRows.length : 0;
-};
-
-const countAggregationFn: AggregationFn<any> = (_columnId, leafRows) => {
-    return leafRows.filter(
-        (row) => !isRemoteGroupPlaceholder(row.original),
-    ).length;
-};
-
-const emptyAggregationFn: AggregationFn<any> = () => undefined;
-
-const resolveAggregationFn = <T,>(
-    aggregation?: DataTableAggregate<T>,
-): AggregationFn<T> | undefined => {
-    if (typeof aggregation === "function") return aggregation;
-    if (aggregation === "sum") return sumAggregationFn;
-    if (aggregation === "avg") return avgAggregationFn;
-    if (aggregation === "count") return countAggregationFn;
-    return undefined;
-};
-
-// Otomatik column formatter - türüne göre uygun display
-const isStrictDateTimeString = (value: string): boolean => {
-    const normalizedValue = value.trim();
-
-    const isoLikePattern = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)?$/;
-    const turkishDateTimePattern = /^\d{2}\.\d{2}\.\d{4}(?: \d{2}:\d{2}(?::\d{2})?)?$/;
-
-    if (!isoLikePattern.test(normalizedValue) && !turkishDateTimePattern.test(normalizedValue)) {
-        return false;
-    }
-
-    return !Number.isNaN(new Date(normalizedValue).getTime());
-};
-
-const formatCellValue = (value: any): string => {
-    if (value === null || value === undefined) return "-";
-    if (typeof value === "boolean") return value ? "Evet" : "Hayır";
-    if (typeof value === "number") return value.toLocaleString("tr-TR");
-    if (value instanceof Date) return value.toLocaleDateString("tr-TR");
-    if (typeof value === "string" && isStrictDateTimeString(value)) {
-        return new Date(value).toLocaleString("tr-TR");
-    }
-    return String(value);
-};
-
-// Türkçe kolon başlığı - camelCase'i boşluklara ayır ve başharfleri büyüt
-const formatColumnHeader = (key: string): string => {
-    return key
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, (str) => str.toUpperCase())
-        .trim();
-};
-
-const SELECT_COLUMN_CELL_CLASS =
-    "w-12 min-w-12 max-w-14 overflow-hidden";
-
-const SELECT_COLUMN_WIDTH = 48;
 const MIN_COL_SIZE = 48;
 const MAX_COL_SIZE = 640;
 const AUTOFIT_SAMPLE_LIMIT = 300;
@@ -174,232 +115,6 @@ const VIRTUAL_OVERSCAN = 10;
 
 const isAbortError = (error: unknown): boolean =>
     error instanceof Error && error.name === "AbortError";
-
-const getColumnSelector = <T,>(
-    column: ColumnDef<T, any>,
-): string | undefined => {
-    if ("accessorKey" in column && typeof column.accessorKey === "string") {
-        return column.accessorKey;
-    }
-
-    return typeof column.id === "string" ? column.id : undefined;
-};
-
-const SELECT_COLUMN_STYLE: CSSProperties = {
-    width: SELECT_COLUMN_WIDTH,
-    minWidth: SELECT_COLUMN_WIDTH,
-    maxWidth: 48,
-};
-
-const isSelectColumnId = (columnId: string) => columnId === "select";
-
-const isFiniteNumber = (value: unknown): value is number =>
-    typeof value === "number" && Number.isFinite(value);
-
-type StickyCellKind = "none" | "select" | "group";
-
-const resolveStickyKind = (
-    columnIndex: number,
-    columnId: string,
-    enableRowSelection: boolean,
-    stickyEnabled: boolean,
-): StickyCellKind => {
-    if (isSelectColumnId(columnId)) {
-        return stickyEnabled ? "select" : "none";
-    }
-    const firstContentIndex = enableRowSelection ? 1 : 0;
-    if (stickyEnabled && columnIndex === firstContentIndex) {
-        return "group";
-    }
-    return "none";
-};
-
-const getStickyCellClassName = (
-    kind: StickyCellKind,
-    variant: "header" | "body" | "group" | "total",
-): string => {
-    if (kind === "none") return "";
-    return clsx(
-        "sticky",
-        kind === "group" && "min-w-[14rem]",
-        kind === "group" && "shadow-[2px_0_5px_-2px_rgba(0,0,0,0.25)]",
-        variant === "header" && "z-20 bg-gray-200 dark:bg-dark-800",
-        variant === "body" && "z-[5] bg-white dark:bg-dark-700",
-        variant === "group" && "z-[5] bg-gray-50 dark:bg-dark-800",
-        variant === "total" && "z-[5] bg-primary-50 dark:bg-primary-900/20",
-    );
-};
-
-const getStickyCellStyle = (
-    kind: StickyCellKind,
-    enableRowSelection: boolean,
-    base?: CSSProperties,
-): CSSProperties | undefined => {
-    if (kind === "none") return base;
-    return {
-        ...base,
-        position: "sticky",
-        left: kind === "select" ? 0 : (enableRowSelection ? SELECT_COLUMN_WIDTH : 0),
-    };
-};
-const countDataRowsInGroup = <T extends Record<string, any>>(row: Row<T>): number => {
-    if (!row.getIsGrouped()) {
-        return isRemoteGroupPlaceholder(row.original) ? 0 : 1;
-    }
-
-    return row.subRows.reduce((total, subRow) => total + countDataRowsInGroup(subRow), 0);
-};
-
-// Grup altindaki secilebilir (veri) satirlari
-const getSelectableLeafRows = <T extends Record<string, any>>(row: Row<T>): Row<T>[] => {
-    return row.getLeafRows().filter(
-        (leaf) => !leaf.getIsGrouped()
-            && !isRemoteGroupPlaceholder(leaf.original),
-    );
-};
-
-const buildExportFilename = (title: string | undefined, extension: string): string => {
-    const base = (title || "tablo")
-        .trim()
-        .replace(/[^\w\u00C0-\u024F.-]+/g, "_")
-        .replace(/^_+|_+$/g, "") || "tablo";
-    const date = new Date().toISOString().split("T")[0];
-    return `${base}-${date}.${extension}`;
-};
-
-const getExportableColumns = <T,>(table: TanstackTable<T>, mode: ExportMode) => {
-    // Ham data: gizlenmis kolonlar dahil tum kolonlar
-    // Tablo gorunumu: sadece gorunen kolonlar
-    const columns =
-        mode === "raw" ? table.getAllLeafColumns() : table.getVisibleLeafColumns();
-    return columns.filter((col) => col.id !== "select");
-};
-
-const getExportableRows = <T,>(table: TanstackTable<T>, scope: ExportScope) => {
-    const sourceRows =
-        scope === "selected"
-            ? table.getSelectedRowModel().flatRows
-            : table.getFilteredRowModel().rows;
-
-    return sourceRows.filter(
-        (row) => !row.getIsGrouped()
-            && !isRemoteGroupPlaceholder(row.original),
-    );
-};
-
-const getColumnHeader = <T,>(table: TanstackTable<T>, columnId: string): string => {
-    const column = table.getAllLeafColumns().find((col) => col.id === columnId);
-    const header = column?.columnDef.header;
-    return typeof header === "string" ? header : columnId;
-};
-
-const getExportPropertyKey = <T,>(
-    table: TanstackTable<T>,
-    columnId: string,
-    mode: ExportMode,
-): string => (mode === "table" ? getColumnHeader(table, columnId) : columnId);
-
-const resolveExportCellValue = <T,>(
-    row: Row<T>,
-    columnId: string,
-    mode: ExportMode,
-    valueMappers?: Record<string, Record<string | number, string>>,
-): unknown => {
-    const rawValue = row.getValue(columnId);
-    if (mode !== "table" || rawValue === null || rawValue === undefined) {
-        return rawValue ?? null;
-    }
-
-    const mapped = valueMappers?.[columnId]?.[rawValue as string | number];
-    return mapped ?? rawValue;
-};
-
-const normalizeExportCellValue = (value: unknown): string | number | boolean => {
-    if (value === null || value === undefined) return "";
-    if (value instanceof Date) return value.toISOString();
-    if (typeof value === "boolean") return value ? "Evet" : "Hayır";
-    return value as string | number | boolean;
-};
-
-const exportTableToExcel = <T,>(
-    table: TanstackTable<T>,
-    filename: string,
-    options: ExportOptions,
-) => {
-    const rows = getExportableRows(table, options.scope);
-    const columns = getExportableColumns(table, options.mode);
-    const headers = columns.map((col) => getExportPropertyKey(table, col.id, options.mode));
-    const data = rows.map((row) =>
-        columns.map((col) =>
-            normalizeExportCellValue(
-                resolveExportCellValue(row, col.id, options.mode, options.valueMappers),
-            ),
-        ),
-    );
-
-    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    worksheet["!cols"] = headers.map((header, index) => ({
-        wch: Math.min(
-            Math.max(
-                String(header).length,
-                ...data.map((row) => String(row[index] ?? "").length)
-            ) + 2,
-            50
-        ),
-    }));
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Veri");
-    XLSX.writeFile(workbook, filename);
-};
-
-const exportTableToJson = <T,>(
-    table: TanstackTable<T>,
-    filename: string,
-    options: ExportOptions,
-) => {
-    const rows = getExportableRows(table, options.scope);
-    const columns = getExportableColumns(table, options.mode);
-    const payload = rows.map((row) => {
-        const item: Record<string, unknown> = {};
-        columns.forEach((col) => {
-            item[getExportPropertyKey(table, col.id, options.mode)] = resolveExportCellValue(
-                row,
-                col.id,
-                options.mode,
-                options.valueMappers,
-            );
-        });
-        return item;
-    });
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json;charset=utf-8;",
-    });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-};
-
-const EXPORT_MENU_SECTIONS: Array<{
-    scope: ExportScope;
-    title: string;
-    items: Array<{ mode: ExportMode }>;
-}> = [
-    {
-        scope: "selected",
-        title: "Seçileni İndir",
-        items: [{ mode: "table" }, { mode: "raw" }],
-    },
-    {
-        scope: "all",
-        title: "Tümü İndir",
-        items: [{ mode: "table" }, { mode: "raw" }],
-    },
-];
 
 function DataTableInner<T extends Record<string, any>>({
     data,
@@ -450,6 +165,7 @@ function DataTableInner<T extends Record<string, any>>({
     enableTableViewMenu = true,
     enableVirtualization = false,
     defaultViewSettings,
+    stateStorageKey,
     columnFilters: controlledColumnFilters,
     onColumnFiltersChange,
     pagination: controlledPagination,
@@ -472,7 +188,7 @@ function DataTableInner<T extends Record<string, any>>({
     const [grouping, setGrouping] = useState<GroupingState>(
         enableGrouping ? defaultGrouping : EMPTY_GROUPING,
     );
-    const [viewSettings, setViewSettings] = useState<TableViewSettings>({
+    const [viewSettings, setViewSettings] = useState<TableViewSettings>(() => ({
         fullScreen: defaultViewSettings?.fullScreen ?? false,
         rowDense: defaultViewSettings?.rowDense ?? false,
         columnBorders: defaultViewSettings?.columnBorders ?? true,
@@ -491,7 +207,8 @@ function DataTableInner<T extends Record<string, any>>({
         virtualization: defaultViewSettings?.virtualization ?? enableVirtualization,
         columnResizing: defaultViewSettings?.columnResizing ?? enableColumnResizing,
         fitColumns: defaultViewSettings?.fitColumns ?? fitColumns,
-    });
+        ...loadPersistedViewSettings(stateStorageKey),
+    }));
     const rowSelectionEnabled = viewSettings.rowSelection;
     const sortingEnabled = viewSettings.sorting;
     const columnFilterEnabled = viewSettings.columnFilter;
@@ -504,6 +221,13 @@ function DataTableInner<T extends Record<string, any>>({
     const jsonExportEnabled = viewSettings.jsonExport;
     const searchEnabled = viewSettings.search;
     const [isGroupColumnSticky, setIsGroupColumnSticky] = useState(true);
+    const [pinnedLeftColumn, setPinnedLeftColumn] = useState<string | null>(null);
+    const [pinnedRightColumn, setPinnedRightColumn] = useState<string | null>(null);
+    const [headerContextMenu, setHeaderContextMenu] = useState<{
+        columnId: string;
+        x: number;
+        y: number;
+    } | null>(null);
     const [expanded, setExpanded] = useState<ExpandedState>(
         (defaultViewSettings?.expandGroups ?? true) ? true : {},
     );
@@ -695,7 +419,15 @@ function DataTableInner<T extends Record<string, any>>({
         }
     }, [controlledRowSelection, effectiveData]);
 
+    // Ilk render'da bu senkronizasyonu atla: initial state zaten ayni enable* prop'lardan
+    // (ve varsa localStorage'dan) hesaplaniyor; aksi halde geri yuklenen ayarlari eziyordu.
+    const isFirstViewSettingsSyncRef = useRef(true);
     useEffect(() => {
+        if (isFirstViewSettingsSyncRef.current) {
+            isFirstViewSettingsSyncRef.current = false;
+            return;
+        }
+
         setViewSettings((current) => ({
             ...current,
             rowSelection: enableRowSelection,
@@ -727,6 +459,11 @@ function DataTableInner<T extends Record<string, any>>({
         enableSearch,
         fitColumns,
     ]);
+
+    // Gorunum ayarlarini kalici hale getir (stateStorageKey verildiyse).
+    useEffect(() => {
+        savePersistedViewSettings(stateStorageKey, viewSettings);
+    }, [stateStorageKey, viewSettings]);
 
     useEffect(() => {
         if (!viewSettings.fullScreen) return;
@@ -1020,6 +757,8 @@ function DataTableInner<T extends Record<string, any>>({
 
     // ref ile initialColumnVisibility'nin ilk değerini saklayalım
     const lastInitialVisibilityRef = useRef<string>('');
+    // Onceki grouping listesi: hangi kolonlarin gruplamadan cikarildigini tespit etmek icin
+    const previousGroupingRef = useRef<string[]>(grouping);
 
     // Veri/visibleColumns/grouping değiştiğinde kolon görünürlüğünü senkronize et
     // ANCAK kullanıcı manuel değişiklik yaptıysa korumalıyız
@@ -1060,20 +799,30 @@ function DataTableInner<T extends Record<string, any>>({
             });
         } else {
             // Sadece grouping değişikliklerini uygula, diğer visibility ayarlarını koru
-            const hasGroupingChange = grouping.some(col => columnVisibility[col] !== false);
-            if (hasGroupingChange) {
+            const previousGrouping = previousGroupingRef.current;
+            const newlyGrouped = grouping.filter((col) => !previousGrouping.includes(col));
+            const newlyUngrouped = previousGrouping.filter((col) => !grouping.includes(col));
+
+            if (newlyGrouped.length > 0 || newlyUngrouped.length > 0) {
                 setColumnVisibility(prev => {
                     const newVisibility = { ...prev };
 
-                    // Gruplanan kolonları gizle
-                    grouping.forEach(groupedColumn => {
+                    // Yeni gruplanan kolonları gizle
+                    newlyGrouped.forEach(groupedColumn => {
                         newVisibility[groupedColumn] = false;
+                    });
+
+                    // Gruplamadan çıkarılan kolonları tekrar göster
+                    newlyUngrouped.forEach(groupedColumn => {
+                        newVisibility[groupedColumn] = true;
                     });
 
                     return newVisibility;
                 });
             }
         }
+
+        previousGroupingRef.current = grouping;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialColumnVisibility, grouping]);
 
@@ -1522,7 +1271,12 @@ function DataTableInner<T extends Record<string, any>>({
 
     // Grup kolonu pin: sadece gruplama varken yatay scrollda solda sabit kalsin
     const stickyEnabled = isGroupColumnSticky && grouping.length > 0;
-    const visibleLeafColumns = table.getVisibleLeafColumns();
+    const visibleLeafColumns = reorderPinnedColumns(
+        table.getVisibleLeafColumns(),
+        (column) => column.id,
+        pinnedLeftColumn,
+        pinnedRightColumn,
+    );
     const visibleLeafCount = visibleLeafColumns.length;
     const visibleLeafColumnKey = visibleLeafColumns.map((column) => column.id).join("|");
     const hasAggregateColumns = visibleLeafColumns.some(
@@ -1537,7 +1291,51 @@ function DataTableInner<T extends Record<string, any>>({
             columnId,
             rowSelectionEnabled,
             stickyEnabled,
+            pinnedLeftColumn,
+            pinnedRightColumn,
         );
+
+    const closeHeaderContextMenu = useCallback(() => setHeaderContextMenu(null), []);
+
+    const handleHeaderContextMenu = (event: ReactMouseEvent, columnId: string) => {
+        if (isSelectColumnId(columnId)) {
+            return;
+        }
+        event.preventDefault();
+        setHeaderContextMenu({ columnId, x: event.clientX, y: event.clientY });
+    };
+
+    const handleHideColumnFromMenu = () => {
+        if (headerContextMenu && columnPickerEnabled) {
+            table.getColumn(headerContextMenu.columnId)?.toggleVisibility(false);
+        }
+        closeHeaderContextMenu();
+    };
+
+    const handleGroupColumnFromMenu = () => {
+        if (headerContextMenu && groupingEnabled && !grouping.includes(headerContextMenu.columnId)) {
+            setGrouping([...grouping, headerContextMenu.columnId]);
+        }
+        closeHeaderContextMenu();
+    };
+
+    const handlePinLeftFromMenu = () => {
+        if (headerContextMenu) {
+            const columnId = headerContextMenu.columnId;
+            setPinnedLeftColumn((current) => (current === columnId ? null : columnId));
+            setPinnedRightColumn((current) => (current === columnId ? null : current));
+        }
+        closeHeaderContextMenu();
+    };
+
+    const handlePinRightFromMenu = () => {
+        if (headerContextMenu) {
+            const columnId = headerContextMenu.columnId;
+            setPinnedRightColumn((current) => (current === columnId ? null : columnId));
+            setPinnedLeftColumn((current) => (current === columnId ? null : current));
+        }
+        closeHeaderContextMenu();
+    };
     const columnTemplate = (() => {
         if (useSizedColumns) {
             return visibleLeafColumns.map((column) => {
@@ -1701,7 +1499,9 @@ function DataTableInner<T extends Record<string, any>>({
     const rowVirtualizer = useVirtualizer({
         count: virtualizationEnabled ? tableRows.length : 0,
         getScrollElement: () =>
-            viewSettings.stickyHeader ? tableBodyRef.current : tableGridRef.current,
+            viewSettings.stickyHeader && !unifiedHorizontalScroll
+                ? tableBodyRef.current
+                : tableGridRef.current,
         estimateSize: () => estimatedRowHeight,
         overscan: VIRTUAL_OVERSCAN,
         getItemKey: (index) => tableRows[index]?.id ?? index,
@@ -1766,75 +1566,6 @@ function DataTableInner<T extends Record<string, any>>({
         },
         [table, title, valueMappers, selectedRecordCount, onNotify],
     );
-
-    const renderExportMenu = (format: "xlsx" | "json", titleText: string, icon: ReactNode) => {
-        const formatLabel = format === "json" ? "Json" : "Excel";
-
-        return (
-        <Menu as="div" className="relative inline-flex">
-            <MenuButton
-                as={Button}
-                variant="flat"
-                isIcon
-                className="size-8 rounded-full"
-                title={titleText}
-                disabled={!hasData}
-            >
-                {icon}
-            </MenuButton>
-            <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="opacity-0 translate-y-1"
-                enterTo="opacity-100 translate-y-0"
-                leave="transition ease-in duration-75"
-                leaveFrom="opacity-100 translate-y-0"
-                leaveTo="opacity-0 translate-y-1"
-            >
-                <MenuItems className="absolute right-0 z-[12000] mt-1.5 w-72 origin-top-right rounded-lg border border-gray-200 bg-white py-1 shadow-lg outline-hidden focus:outline-hidden dark:border-dark-500 dark:bg-dark-750">
-                    {EXPORT_MENU_SECTIONS.map((section, sectionIndex) => {
-                        const sectionDisabled =
-                            section.scope === "selected" && selectedRecordCount === 0;
-
-                        return (
-                            <div key={section.scope}>
-                                {sectionIndex > 0 ? (
-                                    <div className="my-1 border-t border-gray-200 dark:border-dark-500" />
-                                ) : null}
-                                <div className="px-3 py-1.5 text-[11px] font-semibold tracking-wide text-gray-400 dark:text-dark-300">
-                                    {section.title}
-                                </div>
-                                {section.items.map((item) => (
-                                    <MenuItem key={`${section.scope}-${item.mode}`} disabled={sectionDisabled}>
-                                        {({ focus, disabled }) => (
-                                            <button
-                                                type="button"
-                                                disabled={disabled}
-                                                onClick={() => handleExport(format, section.scope, item.mode)}
-                                                className={clsx(
-                                                    "flex w-full px-3 py-2 text-left text-sm outline-hidden transition-colors",
-                                                    disabled
-                                                        ? "cursor-not-allowed text-gray-300 dark:text-dark-500"
-                                                        : focus
-                                                            ? "bg-gray-100 text-gray-900 dark:bg-dark-600 dark:text-dark-50"
-                                                            : "text-gray-700 dark:text-dark-100",
-                                                )}
-                                            >
-                                                {item.mode === "table"
-                                                    ? `Tablo Görünümüyle ${formatLabel} İndir`
-                                                    : `Ham Data ${formatLabel} İndir`}
-                                            </button>
-                                        )}
-                                    </MenuItem>
-                                ))}
-                            </div>
-                        );
-                    })}
-                </MenuItems>
-            </Transition>
-        </Menu>
-        );
-    };
 
     const canShowQueryButton = type === "server" || Boolean(sqlQuery);
 
@@ -2086,20 +1817,26 @@ function DataTableInner<T extends Record<string, any>>({
                             <XMarkIcon className="absolute -right-1 -top-1 size-2.5 rounded-full bg-white text-gray-700 ring-1 ring-white dark:bg-dark-700 dark:text-dark-100 dark:ring-dark-700" />
                         </span>
                     </Button>
-                    {excelExportEnabled
-                        ? renderExportMenu(
-                            "xlsx",
-                            "Excel indir",
-                            <TableCellsIcon className="size-4.5" />,
-                        )
-                        : null}
-                    {jsonExportEnabled
-                        ? renderExportMenu(
-                            "json",
-                            "JSON indir",
-                            <CodeBracketSquareIcon className="size-4.5" />,
-                        )
-                        : null}
+                    {excelExportEnabled ? (
+                        <ExportMenuButton
+                            format="xlsx"
+                            titleText="Excel indir"
+                            icon={<TableCellsIcon className="size-4.5" />}
+                            hasData={hasData}
+                            selectedRecordCount={selectedRecordCount}
+                            onExport={(scope, mode) => handleExport("xlsx", scope, mode)}
+                        />
+                    ) : null}
+                    {jsonExportEnabled ? (
+                        <ExportMenuButton
+                            format="json"
+                            titleText="JSON indir"
+                            icon={<CodeBracketSquareIcon className="size-4.5" />}
+                            hasData={hasData}
+                            selectedRecordCount={selectedRecordCount}
+                            onExport={(scope, mode) => handleExport("json", scope, mode)}
+                        />
+                    ) : null}
                     {canShowQueryButton ? (
                         <Button
                             ref={queryButtonRef}
@@ -2161,7 +1898,12 @@ function DataTableInner<T extends Record<string, any>>({
                         <THead ref={tableHeadRef}>
                             {table.getHeaderGroups().map((headerGroup) => (
                                 <Tr key={headerGroup.id}>
-                                    {headerGroup.headers.map((header, headerIndex) => {
+                                    {reorderPinnedColumns(
+                                        headerGroup.headers,
+                                        (header) => header.column.id,
+                                        pinnedLeftColumn,
+                                        pinnedRightColumn,
+                                    ).map((header, headerIndex) => {
                                         const align = (header.column.columnDef.meta as any)?.align || 'left';
                                         const isSelectColumn = isSelectColumnId(header.column.id);
                                         const stickyKind = getCellStickyKind(
@@ -2171,6 +1913,9 @@ function DataTableInner<T extends Record<string, any>>({
                                         return (
                                             <Th
                                                 key={header.id}
+                                                onContextMenu={(event) =>
+                                                    handleHeaderContextMenu(event, header.column.id)
+                                                }
                                                 className={clsx(
                                                     "dark:bg-dark-800 dark:text-dark-100 bg-gray-200 font-normal text-gray-800 border-r border-gray-300 dark:border-dark-600 last:border-r-0",
                                                     isSelectColumn
@@ -2291,6 +2036,18 @@ function DataTableInner<T extends Record<string, any>>({
                                             const groupColumnHeader = groupColumn ? (typeof groupColumn.columnDef.header === 'string' ? groupColumn.columnDef.header : groupingColumnId) : groupingColumnId;
                                             const groupDepth = row.depth;
                                             const paddingLeft = 15 + (groupDepth * 15);
+                                            const groupRowCells = reorderPinnedColumns(
+                                                row.getVisibleCells(),
+                                                (cell) => cell.column.id,
+                                                pinnedLeftColumn,
+                                                pinnedRightColumn,
+                                            );
+                                            const groupHeaderFirstIndex = rowSelectionEnabled ? 1 : 0;
+                                            const groupHeaderIndex =
+                                                pinnedLeftColumn
+                                                && groupRowCells[groupHeaderFirstIndex]?.column.id === pinnedLeftColumn
+                                                    ? groupHeaderFirstIndex + 1
+                                                    : groupHeaderFirstIndex;
 
                                             return (
                                                 <Tr
@@ -2298,9 +2055,9 @@ function DataTableInner<T extends Record<string, any>>({
                                                     className="dark:border-b-dark-500 border-y border-transparent border-b-gray-200 last:border-none bg-gray-50 dark:bg-dark-800"
                                                     style={virtualRowStyle}
                                                 >
-                                                    {row.getVisibleCells().map((cell, index) => {
+                                                    {groupRowCells.map((cell, index) => {
                                                         const isSelectColumn = cell.column.id === 'select';
-                                                        const isGroupHeaderCell = rowSelectionEnabled ? index === 1 : index === 0;
+                                                        const isGroupHeaderCell = index === groupHeaderIndex;
                                                         const stickyKind = getCellStickyKind(
                                                             index,
                                                             cell.column.id,
@@ -2478,7 +2235,12 @@ function DataTableInner<T extends Record<string, any>>({
                                                 className="dark:border-b-dark-500 border-y border-transparent border-b-gray-200 last:border-none"
                                                 style={virtualRowStyle}
                                             >
-                                                {row.getVisibleCells().map((cell, cellIndex) => {
+                                                {reorderPinnedColumns(
+                                                    row.getVisibleCells(),
+                                                    (cell) => cell.column.id,
+                                                    pinnedLeftColumn,
+                                                    pinnedRightColumn,
+                                                ).map((cell, cellIndex) => {
                                                     const isSelectColumn = isSelectColumnId(cell.column.id);
                                                     const stickyKind = getCellStickyKind(
                                                         cellIndex,
@@ -2517,9 +2279,17 @@ function DataTableInner<T extends Record<string, any>>({
                                         );
                                     })}
                                     {virtualizationEnabled ? <VirtualPad height={virtualPadBottom} /> : null}
-                                    {grouping.length > 0 && hasAggregateColumns && (
+                                    {grouping.length > 0 && hasAggregateColumns && (() => {
+                                        const totalRowFirstIndex = rowSelectionEnabled ? 1 : 0;
+                                        const totalRowLabelIndex =
+                                            pinnedLeftColumn
+                                            && visibleLeafColumns[totalRowFirstIndex]?.id === pinnedLeftColumn
+                                                ? totalRowFirstIndex + 1
+                                                : totalRowFirstIndex;
+
+                                        return (
                                         <Tr className="dark:border-t-dark-400 border-t-2 border-gray-400 bg-primary-50 dark:bg-primary-900/20">
-                                            {table.getVisibleLeafColumns().map((column, index) => {
+                                            {visibleLeafColumns.map((column, index) => {
                                                 const align = (column.columnDef.meta as any)?.align || 'left';
                                                 const isSelectColumn = isSelectColumnId(column.id);
                                                 const stickyKind = getCellStickyKind(
@@ -2547,24 +2317,21 @@ function DataTableInner<T extends Record<string, any>>({
                                                     );
                                                 }
 
-                                                if (index === 0 || (rowSelectionEnabled && index === 1)) {
-                                                    const isFirstContentColumn = rowSelectionEnabled ? index === 1 : index === 0;
-                                                    if (isFirstContentColumn) {
-                                                        return (
-                                                            <Td
-                                                                key={column.id}
-                                                                className={clsx(
-                                                                    "border-r border-gray-300 dark:border-dark-500 last:border-r-0",
-                                                                    stickyClassName,
-                                                                )}
-                                                                style={stickyStyle}
-                                                            >
-                                                                <span className="font-bold text-primary-700 dark:text-primary-300">
-                                                                    Genel Toplam
-                                                                </span>
-                                                            </Td>
-                                                        );
-                                                    }
+                                                if (index === totalRowLabelIndex) {
+                                                    return (
+                                                        <Td
+                                                            key={column.id}
+                                                            className={clsx(
+                                                                "border-r border-gray-300 dark:border-dark-500 last:border-r-0",
+                                                                stickyClassName,
+                                                            )}
+                                                            style={stickyStyle}
+                                                        >
+                                                            <span className="font-bold text-primary-700 dark:text-primary-300">
+                                                                Genel Toplam
+                                                            </span>
+                                                        </Td>
+                                                    );
                                                 }
 
                                                 if (hideInGroupRow.includes(column.id)) {
@@ -2627,7 +2394,8 @@ function DataTableInner<T extends Record<string, any>>({
                                                 );
                                             })}
                                         </Tr>
-                                    )}
+                                        );
+                                    })()}
                                 </>
                             ) : (
                                 <Tr>
@@ -2812,6 +2580,21 @@ function DataTableInner<T extends Record<string, any>>({
                 )}
             </Card>
 
+            {headerContextMenu ? (
+                <ColumnHeaderContextMenu
+                    position={{ x: headerContextMenu.x, y: headerContextMenu.y }}
+                    isPinnedLeft={pinnedLeftColumn === headerContextMenu.columnId}
+                    isPinnedRight={pinnedRightColumn === headerContextMenu.columnId}
+                    isHideDisabled={!columnPickerEnabled}
+                    isGroupDisabled={!groupingEnabled || grouping.includes(headerContextMenu.columnId)}
+                    onHide={handleHideColumnFromMenu}
+                    onGroup={handleGroupColumnFromMenu}
+                    onPinLeft={handlePinLeftFromMenu}
+                    onPinRight={handlePinRightFromMenu}
+                    onClose={closeHeaderContextMenu}
+                />
+            ) : null}
+
             {queryTooltip && createPortal(
                 <div
                     ref={queryTooltipRef}
@@ -2864,134 +2647,4 @@ export const DataTable = forwardRef(DataTableInner) as <
 >(
     props: DataTableProps<T> & RefAttributes<DataTableHandle>,
 ) => ReactElement;
-
-function VirtualPad({ height }: { height: number }) {
-    if (height <= 0) {
-        return null;
-    }
-
-    return (
-        <Tr className="dtp-virtual-pad" aria-hidden="true" style={{ height }}>
-            <Td className="dtp-virtual-pad-cell" />
-        </Tr>
-    );
-}
-
-function HeaderSort<T>({
-    header,
-    table,
-    valueMappers,
-    enableSorting,
-    enableGrouping,
-    enableColumnHeaderFilter,
-}: {
-    header: Header<T, unknown>;
-    table: TanstackTable<T>;
-    valueMappers?: Record<string, Record<string | number, string>>;
-    enableSorting: boolean;
-    enableGrouping: boolean;
-    enableColumnHeaderFilter: boolean;
-}) {
-    const [isDragging, setIsDragging] = useState(false);
-    const usesCustomHeader = typeof header.column.columnDef.header === "function";
-
-    if (usesCustomHeader) {
-        return (
-            <div className="flex h-7 min-w-0 items-center gap-0.5">
-                <span className="min-w-0 flex-1 truncate text-sm">
-                    {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                </span>
-                {enableColumnHeaderFilter ? (
-                    <FacetColumnFilter
-                        column={header.column}
-                        table={table}
-                        valueMappers={valueMappers}
-                    />
-                ) : null}
-            </div>
-        );
-    }
-
-    const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', header.column.id);
-        setIsDragging(true);
-    };
-
-    const handleDragEnd = () => {
-        setIsDragging(false);
-    };
-
-    const headerTitle = enableSorting && enableGrouping
-        ? "Sırala veya gruplamak için sürükle"
-        : enableGrouping
-            ? "Gruplamak için sürükle"
-            : "Sırala";
-
-    return (
-        <div
-            className={clsx(
-                "flex h-7 items-center gap-0.5 select-none transition-opacity",
-                isDragging && "opacity-50"
-            )}
-        >
-            <div
-                draggable={enableGrouping}
-                onDragStart={enableGrouping ? handleDragStart : undefined}
-                onDragEnd={enableGrouping ? handleDragEnd : undefined}
-                className={clsx(
-                    "flex min-w-0 flex-1 items-center gap-1",
-                    enableGrouping ? "cursor-move" : enableSorting ? "cursor-pointer" : "cursor-default",
-                )}
-                onClick={enableSorting ? header.column.getToggleSortingHandler() : undefined}
-                title={headerTitle}
-            >
-                <span className="min-w-0 flex-1 truncate text-sm">
-                    {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                </span>
-                {enableSorting ? (
-                    <span className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 dark:text-dark-300">
-                        <TableSortIcon sorted={header.column.getIsSorted()} />
-                    </span>
-                ) : null}
-            </div>
-            {enableColumnHeaderFilter ? (
-                <FacetColumnFilter
-                    column={header.column}
-                    table={table}
-                    valueMappers={valueMappers}
-                />
-            ) : null}
-        </div>
-    );
-}
-
-// IndeterminateCheckbox component for "select all" functionality
-function IndeterminateCheckbox({
-    indeterminate,
-    className = '',
-    ...rest
-}: { indeterminate?: boolean } & HTMLProps<HTMLInputElement>) {
-    const ref = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (ref.current) {
-            ref.current.indeterminate = indeterminate ?? false;
-        }
-    }, [indeterminate]);
-
-    return (
-        <input
-            type="checkbox"
-            ref={ref}
-            className={clsx("dtp-checkbox size-4 cursor-pointer", className)}
-            {...rest}
-        />
-    );
-}
-
 

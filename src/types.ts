@@ -235,6 +235,8 @@ export type DataTableProps<T> = {
     columnResizing?: boolean;
     fitColumns?: boolean;
   };
+  /** Verilirse Tablo Gorunumu ayarlari (yogunluk, sabit baslik, kolon sigdirma vb.) localStorage'da bu anahtar altinda saklanir ve sayfa yenilenince geri yuklenir. */
+  stateStorageKey?: string;
   columnFilters?: ColumnFiltersState;
   onColumnFiltersChange?: (filters: ColumnFiltersState) => void;
   pagination?: PaginationState;

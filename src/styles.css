@@ -69,18 +69,36 @@
   overflow: hidden;
 }
 
+/*
+ * Bu modda tek scroll yüzeyi vardır: .dtp-grid-horizontal (hem X hem Y).
+ * thead ve tbody kendi overflow'larını kaybeder (position:sticky icin scroll
+ * siniri kurmasinlar diye); thead bunun yerine sticky/top ile "yapisir".
+ * Nedeni: overflow-y:auto olan bir elemanda overflow-x hicbir zaman gercekten
+ * "visible" olamaz (tarayici otomatik "auto"ya cevirir), bu da o elemani
+ * istemeden yatay sabitleme (pin) icin yanlis bir sinir haline getirir.
+ */
 .dtp-grid-horizontal {
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
 }
 
 .dtp-grid-horizontal .dtp-table-scroll {
   width: var(--dtp-row-width, 100%);
   min-width: var(--dtp-row-width, 100%);
+  height: auto;
+  min-height: auto;
+}
+
+.dtp-grid-horizontal .dtp-table-scroll .dtp-thead {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  overflow: visible;
 }
 
 .dtp-grid-horizontal .dtp-table-scroll .dtp-tbody {
-  overflow-x: hidden;
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .dtp-table-scroll {

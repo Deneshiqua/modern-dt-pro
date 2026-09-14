@@ -129,6 +129,7 @@ export function Playground({ onNotify }: PlaygroundProps) {
             <DataTable
               data={rows}
               title={title}
+              stateStorageKey="playground"
               excludeColumns={["id"]}
               columnLabels={COLUMN_LABELS}
               valueMappers={VALUE_MAPPERS}
