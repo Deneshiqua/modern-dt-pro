@@ -34,6 +34,9 @@ export type {
   ExportScope,
   ExportMode,
   ExportOptions,
+  SelectionAction,
+  SelectionActionVariant,
+  SelectionActionConfirm,
 } from "./types";
 
 export { serializeLoadOptions } from "./data-source/serializeLoadOptions";

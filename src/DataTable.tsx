@@ -37,6 +37,7 @@ import { ColumnResizeHandle } from "./components/ColumnResizeHandle";
 import { ExportMenuButton } from "./components/ExportMenuButton";
 import { HeaderSort } from "./components/HeaderSort";
 import { IndeterminateCheckbox } from "./components/IndeterminateCheckbox";
+import { SelectionActionButton } from "./components/SelectionActionButton";
 import { VirtualPad } from "./components/VirtualPad";
 import {
     FacetColumnFilter,
@@ -179,6 +180,7 @@ function DataTableInner<T extends Record<string, any>>({
     onTransferSelected,
     transferSelectedPopoverDescription,
     isTransferSelectedDisabled = false,
+    selectionActions,
     onNotify,
     toolbarExtra,
 }: DataTableProps<T>, ref: ForwardedRef<DataTableHandle>) {
@@ -2484,6 +2486,11 @@ function DataTableInner<T extends Record<string, any>>({
                                             Seçileni sil
                                         </PopoverButton>
                                     )}
+                                    {Array.isArray(selectionActions)
+                                        ? selectionActions.map((action) => (
+                                            <SelectionActionButton key={action.label} action={action} />
+                                        ))
+                                        : selectionActions}
                                     <Button
                                         onClick={() => handleRowSelectionChange({})}
                                         variant="outlined"

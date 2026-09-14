@@ -250,8 +250,30 @@ export type DataTableProps<T> = {
   onTransferSelected?: () => void | Promise<void>;
   transferSelectedPopoverDescription?: ReactNode;
   isTransferSelectedDisabled?: boolean;
+  /** Secim barinda sil/aktar disinda ozel aksiyonlar. Serbest icerik icin ReactNode da verilebilir. */
+  selectionActions?: ReactNode | SelectionAction[];
   onNotify?: NotifyFn;
   toolbarExtra?: ReactNode;
+};
+
+export type SelectionActionVariant = "primary" | "danger" | "neutral";
+
+export type SelectionActionConfirm = {
+  title?: ReactNode;
+  description?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+};
+
+export type SelectionAction = {
+  label: string;
+  onClick: () => void | Promise<void>;
+  /** @default "primary" */
+  variant?: SelectionActionVariant;
+  icon?: ReactNode;
+  disabled?: boolean;
+  /** true ise varsayilan metinlerle, obje ise ozellestirilmis baslik/aciklama ile onay istenir. */
+  confirm?: boolean | SelectionActionConfirm;
 };
 
 export type TextFilterOperator =

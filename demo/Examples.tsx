@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
 
-import { DataTable, type NotifyType } from "modern-dt-pro";
+import { DataTable, type NotifyType, type SelectionAction } from "modern-dt-pro";
 import { ExampleFrame } from "./ExampleFrame";
 import { createRemoteDemoDataSource } from "./remoteDataSource";
 import {
@@ -46,6 +47,23 @@ export function Examples({ onNotify }: ExamplesProps) {
   const handleTransferSelected = async () => {
     onNotify("success", `${selected.length} kayıt aktarıldı`);
   };
+
+  const selectionActions: SelectionAction[] = [
+    {
+      label: "Düzenle",
+      icon: <PencilSquareIcon className="size-4" />,
+      variant: "neutral",
+      onClick: () => onNotify("success", `${selected.length} kayıt düzenleme ekranına gönderildi`),
+    },
+    {
+      label: "Arşivle",
+      variant: "danger",
+      confirm: {
+        description: `${selected.length} seçili kayıt arşivlenecek. Onaylıyor musunuz?`,
+      },
+      onClick: () => onNotify("success", `${selected.length} kayıt arşivlendi`),
+    },
+  ];
 
   const handleServerRefresh = () => {
     onNotify("success", "Sunucu verileri yenilendi");
@@ -101,6 +119,7 @@ export function Examples({ onNotify }: ExamplesProps) {
           deleteSelectedPopoverDescription={`${selected.length} seçili kayıt silinecek. Onaylıyor musunuz?`}
           onTransferSelected={handleTransferSelected}
           transferSelectedPopoverDescription={`${selected.length} seçili kayıt aktarılacak. Onaylıyor musunuz?`}
+          selectionActions={selectionActions}
         />
       </ExampleFrame>
 
