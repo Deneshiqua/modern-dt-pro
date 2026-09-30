@@ -127,3 +127,18 @@ export const SQL_CODE = `import { DataTable } from "modern-dt-pro";
   columnLabels={COLUMN_LABELS}
   sqlQuery={SAMPLE_SQL}
 />`;
+
+export const PIVOT_CODE = `import { DataTable } from "modern-dt-pro";
+
+<DataTable
+  data={rows}
+  title="Kategori × birim pivotu"
+  excludeColumns={["id"]}
+  columnLabels={COLUMN_LABELS}
+  pivot={{
+    rows: ["category"],
+    columns: ["department"],
+    values: [{ field: "total", aggregate: "sum" }],
+  }}
+  onPivotChange={(pivot) => console.log(pivot)}
+/>`;

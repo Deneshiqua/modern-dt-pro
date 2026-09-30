@@ -86,6 +86,30 @@ export function createDemoRows(count = 16): DemoRow[] {
   });
 }
 
+/** Pivot ornegi icin boyutlari birbirinden bagimsiz dagilan satirlar. */
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+/** 2024-01 ile 2026-06 arasina yayilmis, saatli yerel tarih ("2025-03-14T09:30:00"). */
+function pivotDateAt(index: number, count: number) {
+  const start = new Date(2024, 0, 1).getTime();
+  const end = new Date(2026, 5, 30).getTime();
+  const date = new Date(start + ((end - start) * index) / Math.max(count - 1, 1));
+  const hour = 8 + ((index * 5) % 11);
+  const minute = (index * 17) % 60;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(hour)}:${pad2(minute)}:00`;
+}
+
+export function createPivotDemoRows(count = 240): DemoRow[] {
+  return createDemoRows(count).map((row, index) => ({
+    ...row,
+    createdAt: pivotDateAt(index, count),
+    category: CATEGORIES[Math.floor(index / 3) % CATEGORIES.length],
+    department: DEPARTMENTS[Math.floor(index / 7) % DEPARTMENTS.length],
+    city: CITIES[Math.floor(index / 11) % CITIES.length],
+    priority: PRIORITIES[(index * 7 + Math.floor(index / 17)) % PRIORITIES.length],
+  }));
+}
+
 export const COLUMN_LABELS: Record<string, string> = {
   createdAt: "Oluşturma tarihi",
   code: "Kod",

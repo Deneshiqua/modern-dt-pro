@@ -56,6 +56,7 @@ export function Documentation() {
         <a href="#kolonlar">Kolonlar</a>
         <a href="#templateler">Template'ler</a>
         <a href="#gruplama">Gruplama</a>
+        <a href="#pivot">Pivot</a>
         <a href="#gorunum">Görünüm</a>
         <a href="#filtre">Filtre</a>
         <a href="#secim">Seçim</a>
@@ -249,6 +250,8 @@ type DataTableGroupItem<T> = {
         <PropTable rows={COLUMN_PROPS} />
         <h3>Gruplama ve sıralama</h3>
         <PropTable rows={GROUP_PROPS} />
+        <h3>Pivot</h3>
+        <PropTable rows={PIVOT_PROPS} />
         <h3>Filtre ve arama</h3>
         <PropTable rows={FILTER_PROPS} />
         <h3>Export</h3>
@@ -433,6 +436,193 @@ const columns: ColumnDef<Row>[] = [
         </CodeBlock>
       </section>
 
+      <section className="card docs-section" id="pivot">
+        <h2>Pivot</h2>
+        <p>
+          <code className="docs-code-inline">pivot</code> verildiğinde tablo, DevExtreme
+          PivotGrid benzeri bir pivot ızgarasına dönüşür: satır ve sütun hiyerarşileri
+          +/− ile açılıp kapanır, her seviyede ara toplam ve genel toplam hesaplanır,
+          sütun başlıkları iç içe çizilir. Satır ve sütun başlıkları kaydırırken sabit
+          kalır. Pivot yalnızca istemci tarafı <code className="docs-code-inline">data</code>{" "}
+          ile çalışır; <code className="docs-code-inline">dataSource</code> ile normal tablo
+          kullanılır.
+        </p>
+        <CodeBlock>{`import { DataTable, type DataTablePivotConfig } from "modern-dt-pro";
+
+const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
+  rows: ["region", "city"],
+  columns: ["date::year", "date::quarter"],
+  values: [{ field: "amount", aggregate: "sum", label: "Ciro" }],
+});
+
+<DataTable
+  data={sales}
+  columnLabels={{ region: "Bölge", city: "Şehir" }}
+  pivot={pivot}
+  onPivotChange={setPivot}
+  enablePivotDataImport
+/>`}
+        </CodeBlock>
+
+        <h3>Pivot ayarı</h3>
+        <PropTable rows={PIVOT_CONFIG_ROWS} />
+
+        <h3>Tarih kırılımları</h3>
+        <p>
+          Değerleri <code className="docs-code-inline">"2025-03-14"</code> ya da{" "}
+          <code className="docs-code-inline">"2025-03-14T09:30:00"</code> gibi olan alanlar
+          tarih olarak tanınır ve Alan Seçici'de alt alanlarıyla listelenir: Yıl, Çeyrek,
+          Ay, Gün, Saat. Kimlik biçimi{" "}
+          <code className="docs-code-inline">alan::year | quarter | month | day | hour</code>.
+          Ana tarih alanı bir boyuta bırakılınca Yıl › Ay › Gün kırılımına açılır. Saat
+          dilimi yazılmamış tarihler yerel saatle okunur.
+        </p>
+
+        <h3>Arayüz</h3>
+        <ul className="docs-list">
+          <li>
+            <strong>Alan Seçici (Pivot düğmesi).</strong> Tüm alanlar, filtre, satır,
+            sütun ve veri alanları arasında sürükle-bırak. Huni simgesiyle değer filtresi,
+            Σ simgesiyle özet türü (Toplam, Ortalama, Adet, En küçük, En büyük). Pencere
+            büyütülüp köşesinden boyutlandırılabilir.
+          </li>
+          <li>
+            <strong>Alan paneli.</strong> Tablo Görünümü menüsünden açılır; filtre alanları
+            tablonun üstünde, veri ve satır alanları sol üst köşede, sütun alanları sütun
+            başlıklarının üstünde durur. Panel kapalıyken yalnızca açık seviyelerin satır
+            başlığı sütunları çizilir.
+          </li>
+          <li>
+            <strong>Çip menüsü (sağ tık).</strong> Yeniden adlandır (F2), Varsayılan ada
+            dön, Kaldır (Delete). Yeni adlar <code className="docs-code-inline">fieldLabels</code>{" "}
+            ve <code className="docs-code-inline">values[].label</code> içinde saklanır.
+          </li>
+          <li>
+            <strong>Tablo Görünümü.</strong> Tam ekran, sıkıştır, başlık, alan paneli, dört
+            toplam anahtarı ve <em>Araç çubuğu</em> bölümü: Veri, Yapılandırma, Pivot, Hücre
+            Renkleri, Sayı Biçimi ve Koşullu Biçimlendirme düğmeleri tek tek gizlenip gösterilir
+            (başlangıç değeri <code className="docs-code-inline">defaultPivotToolbar</code>). Pivot
+            düğmesi gizliyken de Alan Seçici veri yüklendikten sonra açılır. Araç çubuğunda
+            ayrıca Tümünü genişlet / daralt vardır.
+          </li>
+          <li>
+            <strong>İndir.</strong> Pivot tablosu birleşik hücrelerle ya da filtrelenmiş
+            ham veri Excel olarak indirilir.
+          </li>
+          <li>
+            <strong>Uyarılar.</strong> Sayısal olmayan alanın toplanması, veride olmayan
+            alan, boş veri alanı ve çok fazla satır/sütun Alan Seçici'de ve tablonun
+            üstünde bildirilir.
+          </li>
+        </ul>
+
+        <h3>Koşullu biçimlendirme</h3>
+        <p>
+          Fırça düğmesi kural listesini açar. Her kural bir veri alanına (ya da tümüne),
+          bir koşula ve bir biçime sahiptir; kurallar sırayla uygulanır, aynı hücreye uyan
+          sonraki kural öncekini ezer. Yazı rengi verilmezse arka plana göre okunur renk
+          seçilir.
+        </p>
+        <CodeBlock>{`conditions: [
+  {
+    id: "yuksek",
+    measure: { field: "amount", aggregate: "sum" },
+    operator: "gt",            // lt | lte | gt | gte | eq | neq | between | notBetween | empty | notEmpty
+    value: 30000,              // between/notBetween icin value + value2
+    applyTo: "cells",          // all | cells | totals
+    format: { backgroundColor: "#dcfce7", color: "#166534", fontWeight: "bold" },
+  },
+]`}
+        </CodeBlock>
+
+        <h3>Hücre renkleri</h3>
+        <p>
+          Palet düğmesi veri hücreleri, ara toplamlar ve genel toplamlar için ayrı ayrı arka
+          plan ve yazı rengi belirler. "Tüm değerler" varsayılan renkleri (
+          <code className="docs-code-inline">cellStyles</code>), bir veri alanı seçmek o alana
+          özel renkleri (<code className="docs-code-inline">values[].cellStyles</code>) düzenler.
+          Yazı rengi verilmezse arka plana göre okunur renk seçilir. Veri hücrelerine 2. renk (
+          <code className="docs-code-inline">alternateCells</code>) verilirse görünen veri
+          sütunları verilen sırayla 1. ve 2. renkle boyanır; toplam sütunları sırayı etkilemez.
+          Koşullu biçimlendirme bu renklerin üstüne uygulanır.
+        </p>
+        <CodeBlock>{`cellStyles: {
+  cells: { backgroundColor: "#dbeafe" },       // veri hücreleri, 1. renk
+  alternateCells: { backgroundColor: "#fef9c3" }, // 2. renk: sütunlar sırayla dönüşür
+  totals: { backgroundColor: "#fef9c3" },      // ara toplamlar
+  grandTotals: { backgroundColor: "#dbeafe" }, // genel toplamlar
+}`}
+        </CodeBlock>
+
+        <h3>Sayı biçimi</h3>
+        <p>
+          # düğmesi WebDataRocks "Format cells" benzeri pencereyi açar. "Tüm değerler"
+          varsayılan biçimi (<code className="docs-code-inline">numberFormat</code>), bir veri
+          alanı seçmek o alana özel biçimi (<code className="docs-code-inline">values[].numberFormat</code>)
+          düzenler; alan biçiminde verilmeyen ayarlar varsayılandan gelir. Değişiklikler
+          önizlenir ve "Uygula" ile tabloya aktarılır. Excel çıktısında sayılar ham değer
+          olarak kalır.
+        </p>
+        <CodeBlock>{`numberFormat: {
+  textAlign: "right",          // left | center | right
+  thousandsSeparator: ".",     // "." | "," | " " | "'" | "" (yok)
+  decimalSeparator: ",",       // "," | "."
+  decimalPlaces: 2,            // 0-10; verilmezse en fazla 2
+  currencySymbol: "₺",
+  currencyAlign: "right",      // left: $1.234 | right: 1.234 ₺
+  nullValue: "-",              // boş hücre metni
+  isPercent: false,            // true: 0,256 -> %25,6
+}`}
+        </CodeBlock>
+
+        <h3>Veri yükleme</h3>
+        <p>
+          <code className="docs-code-inline">enablePivotDataImport</code> araç çubuğuna{" "}
+          <strong>Veri</strong> düğmesini ekler. Kullanıcı JSON listesini yapıştırır ya da
+          dosya seçer; <code className="docs-code-inline">{`[ {...}, {...} ]`}</code> veya{" "}
+          <code className="docs-code-inline">{`{ "data": [ ... ] }`}</code> kabul edilir. Hatalı
+          JSON satır ve sütunuyla gösterilir. Uygulanınca pivot ayarı sıfırlanır, Alan Seçici
+          açılır ve <code className="docs-code-inline">onPivotDataImport(rows)</code> çağrılır.
+          Yüklenen veri <code className="docs-code-inline">data</code> prop'u değişene kadar
+          kullanılır.
+        </p>
+
+        <h3>Yapılandırma</h3>
+        <p>
+          <strong>Yapılandırma</strong> düğmesi alan seçici, hücre renkleri, sayı biçimi ve
+          koşullu biçimlendirme ayarlarını Özet ve JSON olarak gösterir. JSON kopyalanabilir, indirilebilir,
+          düzenlenip ya da dosyadan yüklenip uygulanabilir; yapı hataları yol bilgisiyle
+          (<code className="docs-code-inline">values[0].aggregate geçersiz</code>) bildirilir.
+          Açık/kapalı gruplar ve kural kimlikleri dışa aktarılmaz.
+        </p>
+        <CodeBlock>{`{
+  "rows": ["region"],
+  "columns": ["date::year"],
+  "filters": ["status"],
+  "filterValues": { "status": [1] },
+  "values": [{ "field": "amount", "aggregate": "sum", "label": "Ciro" }],
+  "fieldLabels": { "region": "Bölge" },
+  "numberFormat": { "decimalPlaces": 2, "currencySymbol": "₺" },
+  "cellStyles": { "totals": { "backgroundColor": "#fef9c3" } },
+  "conditions": [],
+  "showColumnGrandTotals": false
+}`}
+        </CodeBlock>
+
+        <h3>JSON editörü (Monaco)</h3>
+        <p>
+          Veri ve Yapılandırma pencerelerindeki JSON alanı{" "}
+          <code className="docs-code-inline">monaco-editor</code> kullanır: renklendirme,
+          katlama ve yapılandırma için şema tabanlı otomatik tamamlama. Monaco pakete
+          gömülüdür (CDN yok) ve yalnızca bir JSON penceresi açılınca ayrı parça olarak
+          yüklenir; yüklenemezse düz metin alanı gösterilir. Worker'lar Vite{" "}
+          <code className="docs-code-inline">?worker</code> ile yüklendiği için pivot JSON
+          editörü Vite projelerinde çalışır. Kendi{" "}
+          <code className="docs-code-inline">self.MonacoEnvironment</code> tanımınız varsa o
+          kullanılır.
+        </p>
+      </section>
+
       <section className="card docs-section" id="gorunum">
         <h2>Tablo görünümü</h2>
         <p>
@@ -582,10 +772,11 @@ const columns: ColumnDef<Row>[] = [
       <section className="card docs-section" id="export">
         <h2>Export</h2>
         <p>
-          Toolbar'da Excel ve JSON indirme vardır.{" "}
+          Toolbar'daki tek <strong>İndir</strong> menüsü Excel ve JSON seçeneklerini
+          birlikte gösterir.{" "}
           <code className="docs-code-inline">enableExcelExport</code> ve{" "}
-          <code className="docs-code-inline">enableJsonExport</code> ile ayrı ayrı
-          kapatılır. Kapsam: seçilen veya tümü. Mod:{" "}
+          <code className="docs-code-inline">enableJsonExport</code> ile formatlar ayrı ayrı
+          kapatılır; ikisi de kapalıysa menü gizlenir. Kapsam: seçilen veya tümü. Mod:{" "}
           <code className="docs-code-inline">table</code> (görünen etiketler) veya{" "}
           <code className="docs-code-inline">raw</code> (ham değer).
         </p>
@@ -722,6 +913,10 @@ type PaginationState = { pageIndex: number; pageSize: number };`}
 }
 
 const FEATURES = [
+  {
+    title: "Pivot",
+    desc: "Açılır/kapanır satır ve sütun hiyerarşisi, ara ve genel toplamlar, tarih kırılımları, koşullu biçimlendirme, JSON veri yükleme ve yapılandırma.",
+  },
   {
     title: "Otomatik kolonlar",
     desc: "Nesne anahtarlarından kolon üretir; etiket ve görünürlük özelleştirilir.",
@@ -867,7 +1062,38 @@ const MISC_PROPS: PropRow[] = [
   { name: "onNotify", type: "NotifyFn", def: "—", desc: "(type, message) => void. Yoksa setDataTableNotify veya console." },
 ];
 
+const PIVOT_CONFIG_ROWS: PropRow[] = [
+  { name: "rows", type: "string[]", def: "—", desc: "Satır alanları (hiyerarşi sırasıyla). Tarih kırılımı: \"alan::year\"." },
+  { name: "columns", type: "string[]", def: "—", desc: "Sütun alanları (hiyerarşi sırasıyla)." },
+  { name: "values", type: "DataTablePivotValue[]", def: "—", desc: "{ field, aggregate: sum | avg | count | min | max, label?, numberFormat?, cellStyles?, format? }" },
+  { name: "filters", type: "string[]", def: "[]", desc: "Yalnızca filtrelemek için kullanılan alanlar." },
+  { name: "filterValues", type: "Record<string, (string | number | boolean | null)[]>", def: "—", desc: "Alan başına dahil edilecek değerler; boş değer için null." },
+  { name: "fieldLabels", type: "Record<string, string>", def: "—", desc: "Satır/sütun/filtre alanlarının görünen adları." },
+  { name: "numberFormat", type: "DataTablePivotNumberFormat", def: "—", desc: "Tüm veri alanları için varsayılan sayı biçimi; values[].numberFormat alana özel biçimdir." },
+  { name: "cellStyles", type: "DataTablePivotCellStyles", def: "—", desc: "Veri hücresi, ara toplam ve genel toplam renkleri; values[].cellStyles alana özeldir." },
+  { name: "conditions", type: "DataTablePivotCondition[]", def: "[]", desc: "Koşullu biçimlendirme kuralları." },
+  { name: "showRowTotals", type: "boolean", def: "true", desc: "Açılan satır gruplarının ara toplam satırı." },
+  { name: "showColumnTotals", type: "boolean", def: "true", desc: "Açılan sütun gruplarının ara toplam sütunu." },
+  { name: "showRowGrandTotals", type: "boolean", def: "true", desc: "En alttaki genel toplam satırı." },
+  { name: "showColumnGrandTotals", type: "boolean", def: "true", desc: "En sağdaki genel toplam sütunu." },
+  { name: "expandedRows / expandedColumns", type: "string[]", def: "[]", desc: "Açık düğüm yolları; +/− ve Tümünü genişlet bunları günceller." },
+];
+
+const PIVOT_PROPS: PropRow[] = [
+  { name: "pivot", type: "DataTablePivotConfig<T>", def: "—", desc: "Verilirse tablo pivot ızgarası olarak çizilir." },
+  { name: "onPivotChange", type: "(pivot) => void", def: "—", desc: "Alan seçici, panel, +/−, kural veya yapılandırma değişince çağrılır." },
+  { name: "enablePivotPanel", type: "boolean", def: "true", desc: "Araç çubuğundaki Pivot (Alan Seçici) düğmesi." },
+  { name: "defaultPivotFieldPanel", type: "boolean", def: "false", desc: "Alan paneli başlangıçta açık mı." },
+  { name: "enablePivotDataImport", type: "boolean", def: "false", desc: "Araç çubuğunda JSON veri yükleme (Veri) düğmesi." },
+  { name: "onPivotDataImport", type: "(rows) => void", def: "—", desc: "Veri düğmesiyle yeni liste yüklenince çağrılır." },
+  { name: "defaultPivotToolbar", type: "DataTablePivotToolbar", def: "hepsi görünür", desc: "Araç çubuğu düğmelerinin başlangıç görünürlüğü: data, configuration, fieldChooser, cellStyles, numberFormat, conditions." },
+];
+
 const HELPER_PROPS: PropRow[] = [
+  { name: "buildPivotModel", type: "(data, pivot, options?) => PivotModel", def: "—", desc: "Pivot ağaçlarını ve hücre toplamlarını hesaplar (arayüzsüz kullanım)." },
+  { name: "layoutPivot", type: "(model, options, valueLabel) => PivotLayout", def: "—", desc: "Açık düğümlere göre satır/sütun başlıklarını rowSpan/colSpan ile yerleştirir." },
+  { name: "detectPivotFields", type: "(data, options) => PivotField[]", def: "—", desc: "Sayısal ve tarih alanlarını tespit eder; tarih kırılımlarını ekler." },
+  { name: "pivotIntervalFieldId", type: "(field, interval) => string", def: "—", desc: "\"createdAt\" + \"year\" → \"createdAt::year\"." },
   { name: "serializeLoadOptions", type: "(options, config?) => URLSearchParams", def: "—", desc: "LoadOptions değerlerini URLSearchParams'a çevirir; parameterNames, transformValue ve omitEmpty destekler." },
   { name: "columnFiltersToExpression", type: "(filters) => DataTableFilterExpression | undefined", def: "—", desc: "TanStack kolon filtrelerini remote filtre ifadesine çevirir." },
   { name: "buildDataTableLoadOptions", type: "(state) => DataTableLoadOptions", def: "—", desc: "Filtre, sıralama, sayfalama, arama ve gruplama state'inden load options üretir." },
@@ -882,6 +1108,12 @@ const HELPER_PROPS: PropRow[] = [
 ];
 
 const TYPE_ROWS: PropRow[] = [
+  { name: "DataTablePivotConfig<T>", type: "object", def: "—", desc: "Pivot ayarı: rows, columns, values, filtreler, adlar, kurallar ve toplam seçenekleri." },
+  { name: "DataTablePivotValue", type: "object", def: "—", desc: "field, aggregate, label?, format?" },
+  { name: "DataTablePivotCondition", type: "object", def: "—", desc: "Koşullu biçimlendirme kuralı." },
+  { name: "DataTablePivotNumberFormat", type: "object", def: "—", desc: "Hizalama, ayırıcılar, ondalık, para birimi, boş değer ve yüzde ayarları." },
+  { name: "DataTablePivotCellStyles", type: "object", def: "—", desc: "cells / alternateCells / totals / grandTotals için { backgroundColor, color }." },
+  { name: "DataTablePivotDateInterval", type: '"year" | "quarter" | "month" | "day" | "hour"', def: "—", desc: "Tarih kırılımı." },
   { name: "DataTableProps<T>", type: "interface", def: "—", desc: "DataTable prop tipi." },
   { name: "DataTableDataSource<T>", type: "interface", def: "—", desc: "key ve load(options, { signal }) remote veri sözleşmesi." },
   { name: "DataTableLoadOptions", type: "object", def: "—", desc: "Sayfalama, filtre, arama, sıralama, gruplama, summary ve seçim alanları." },

@@ -4,8 +4,9 @@ import type { NotifyType } from "modern-dt-pro";
 import { Documentation } from "./Documentation";
 import { Examples } from "./Examples";
 import { Playground } from "./Playground";
+import { PivotPlayground } from "./PivotPlayground";
 
-type Tab = "examples" | "playground" | "docs";
+type Tab = "examples" | "playground" | "pivot" | "docs";
 type ThemePref = "system" | "light" | "dark";
 type ResolvedTheme = "light" | "dark";
 
@@ -124,6 +125,15 @@ export default function App() {
             <button
               type="button"
               role="tab"
+              aria-selected={tab === "pivot"}
+              className={tab === "pivot" ? "tab-btn active" : "tab-btn"}
+              onClick={() => setTab("pivot")}
+            >
+              Pivot
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={tab === "docs"}
               className={tab === "docs" ? "tab-btn active" : "tab-btn"}
               onClick={() => setTab("docs")}
@@ -175,6 +185,7 @@ export default function App() {
 
       {tab === "examples" ? <Examples onNotify={pushToast} /> : null}
       {tab === "playground" ? <Playground onNotify={pushToast} /> : null}
+      {tab === "pivot" ? <PivotPlayground onNotify={pushToast} /> : null}
       {tab === "docs" ? <Documentation /> : null}
 
       <footer className="footer">

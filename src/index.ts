@@ -4,6 +4,19 @@ export { DataTable } from "./DataTable";
 
 export type {
   DataTableProps,
+  DataTablePivotAggregate,
+  DataTablePivotValue,
+  DataTablePivotConfig,
+  DataTablePivotFilterValue,
+  DataTablePivotDateInterval,
+  DataTablePivotCondition,
+  DataTablePivotNumberFormat,
+  DataTablePivotCellStyles,
+  DataTablePivotColorStyle,
+  DataTablePivotToolbar,
+  DataTablePivotToolbarButton,
+  DataTablePivotConditionFormat,
+  DataTablePivotConditionOperator,
   DataTableType,
   DataTableFilterOperator,
   DataTableLogicalOperator,
@@ -38,6 +51,20 @@ export type {
   SelectionActionVariant,
   SelectionActionConfirm,
 } from "./types";
+
+export {
+  buildPivotModel,
+  collectExpandablePaths,
+  detectPivotFields,
+  layoutPivot,
+  pivotIntervalFieldId,
+} from "./pivot/pivotEngine";
+export type {
+  PivotField,
+  PivotLayout,
+  PivotModel,
+  PivotNode,
+} from "./pivot/pivotEngine";
 
 export { serializeLoadOptions } from "./data-source/serializeLoadOptions";
 export type {

@@ -6,22 +6,25 @@ import { Button } from "../ui";
 import { EXPORT_MENU_SECTIONS } from "../utils/exportTable";
 import type { ExportMode, ExportScope } from "../types";
 
+export type ExportFormat = "xlsx" | "json";
+
+const FORMAT_LABELS: Record<ExportFormat, string> = { xlsx: "Excel", json: "Json" };
+
 export function ExportMenuButton({
-  format,
+  formats,
   titleText,
   icon,
   hasData,
   selectedRecordCount,
   onExport,
 }: {
-  format: "xlsx" | "json";
+  formats: ExportFormat[];
   titleText: string;
   icon: ReactNode;
   hasData: boolean;
   selectedRecordCount: number;
-  onExport: (scope: ExportScope, mode: ExportMode) => void;
+  onExport: (format: ExportFormat, scope: ExportScope, mode: ExportMode) => void;
 }) {
-  const formatLabel = format === "json" ? "Json" : "Excel";
 
   return (
     <Menu as="div" className="relative inline-flex">
@@ -57,13 +60,13 @@ export function ExportMenuButton({
                 <div className="px-3 py-1.5 text-[11px] font-semibold tracking-wide text-gray-400 dark:text-dark-300">
                   {section.title}
                 </div>
-                {section.items.map((item) => (
-                  <MenuItem key={`${section.scope}-${item.mode}`} disabled={sectionDisabled}>
+                {formats.flatMap((format) => section.items.map((item) => (
+                  <MenuItem key={`${section.scope}-${format}-${item.mode}`} disabled={sectionDisabled}>
                     {({ focus, disabled }) => (
                       <button
                         type="button"
                         disabled={disabled}
-                        onClick={() => onExport(section.scope, item.mode)}
+                        onClick={() => onExport(format, section.scope, item.mode)}
                         className={clsx(
                           "flex w-full px-3 py-2 text-left text-sm outline-hidden transition-colors",
                           disabled
@@ -74,12 +77,12 @@ export function ExportMenuButton({
                         )}
                       >
                         {item.mode === "table"
-                          ? `Tablo Görünümüyle ${formatLabel} İndir`
-                          : `Ham Data ${formatLabel} İndir`}
+                          ? `Tablo Görünümüyle ${FORMAT_LABELS[format]} İndir`
+                          : `Ham Data ${FORMAT_LABELS[format]} İndir`}
                       </button>
                     )}
                   </MenuItem>
-                ))}
+                )))}
               </div>
             );
           })}

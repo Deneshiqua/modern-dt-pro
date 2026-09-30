@@ -1,6 +1,6 @@
 {
   "name": "modern-dt-pro",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Modern DataTable Pro",
   "author": "Deniz",
   "license": "MIT",
@@ -53,6 +53,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.12",
     "clsx": "^2.1.1",
+    "monaco-editor": "^0.57.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -73,6 +74,10 @@
     "datatable",
     "tanstack-table",
     "grouping",
-    "excel-export"
+    "excel-export",
+    "pivot",
+    "pivot-grid",
+    "pivot-table",
+    "conditional-formatting"
   ]
 }

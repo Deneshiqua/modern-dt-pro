@@ -23,7 +23,7 @@ import {
     useReactTable
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CodeBracketSquareIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TableCellsIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
 import { Button, Card, PopoverButton, TBody, THead, Table, Td, Th, Tr } from "./ui";
 import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CSSProperties, DragEvent, UIEvent, forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardedRef, type MouseEvent as ReactMouseEvent, type ReactElement, type RefAttributes } from "react";
@@ -100,6 +100,7 @@ import {
     getExportableRows,
 } from "./utils/exportTable";
 import clsx from "clsx";
+import { PivotDataTable } from "./pivot/PivotDataTable";
 
 // ----------------------------------------------------------------------
 
@@ -1819,24 +1820,17 @@ function DataTableInner<T extends Record<string, any>>({
                             <XMarkIcon className="absolute -right-1 -top-1 size-2.5 rounded-full bg-white text-gray-700 ring-1 ring-white dark:bg-dark-700 dark:text-dark-100 dark:ring-dark-700" />
                         </span>
                     </Button>
-                    {excelExportEnabled ? (
+                    {excelExportEnabled || jsonExportEnabled ? (
                         <ExportMenuButton
-                            format="xlsx"
-                            titleText="Excel indir"
-                            icon={<TableCellsIcon className="size-4.5" />}
+                            formats={[
+                                ...(excelExportEnabled ? ["xlsx" as const] : []),
+                                ...(jsonExportEnabled ? ["json" as const] : []),
+                            ]}
+                            titleText="İndir"
+                            icon={<ArrowDownTrayIcon className="size-4.5" />}
                             hasData={hasData}
                             selectedRecordCount={selectedRecordCount}
-                            onExport={(scope, mode) => handleExport("xlsx", scope, mode)}
-                        />
-                    ) : null}
-                    {jsonExportEnabled ? (
-                        <ExportMenuButton
-                            format="json"
-                            titleText="JSON indir"
-                            icon={<CodeBracketSquareIcon className="size-4.5" />}
-                            hasData={hasData}
-                            selectedRecordCount={selectedRecordCount}
-                            onExport={(scope, mode) => handleExport("json", scope, mode)}
+                            onExport={(format, scope, mode) => handleExport(format, scope, mode)}
                         />
                     ) : null}
                     {canShowQueryButton ? (
@@ -2649,7 +2643,33 @@ function DataTableInner<T extends Record<string, any>>({
     );
 }
 
-export const DataTable = forwardRef(DataTableInner) as <
+const DataTableBase = forwardRef(DataTableInner) as <
+    T extends Record<string, any>,
+>(
+    props: DataTableProps<T> & RefAttributes<DataTableHandle>,
+) => ReactElement;
+
+function DataTableRoot<T extends Record<string, any>>(
+    props: DataTableProps<T>,
+    ref: ForwardedRef<DataTableHandle>,
+) {
+    const {
+        pivot,
+        onPivotChange: _onPivotChange,
+        enablePivotPanel: _enablePivotPanel,
+        defaultPivotFieldPanel: _defaultPivotFieldPanel,
+        enablePivotDataImport: _enablePivotDataImport,
+        onPivotDataImport: _onPivotDataImport,
+        defaultPivotToolbar: _defaultPivotToolbar,
+        ...tableProps
+    } = props;
+    if (pivot && !props.dataSource) {
+        return <PivotDataTable {...props} pivot={pivot} />;
+    }
+    return <DataTableBase {...tableProps} ref={ref} />;
+}
+
+export const DataTable = forwardRef(DataTableRoot) as <
     T extends Record<string, any>,
 >(
     props: DataTableProps<T> & RefAttributes<DataTableHandle>,

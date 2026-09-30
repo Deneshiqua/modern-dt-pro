@@ -156,7 +156,182 @@ export type DataTableTemplateMap<T, TTemplate> = Partial<
   Record<Extract<keyof T, string>, TTemplate>
 >;
 
+export type DataTablePivotAggregate = "sum" | "avg" | "count" | "min" | "max";
+
+/** Pivot arac cubugundaki, Tablo Gorunumu'nden gizlenip gosterilebilen dugmeler. */
+export type DataTablePivotToolbarButton =
+  | "data"
+  | "configuration"
+  | "fieldChooser"
+  | "cellStyles"
+  | "numberFormat"
+  | "conditions";
+
+/** Dugme -> baslangicta gorunur mu. Verilmeyenler gorunur. */
+export type DataTablePivotToolbar = Partial<Record<DataTablePivotToolbarButton, boolean>>;
+
+/** Pivot veri hucreleri icin sayi bicimi (WebDataRocks "Format cells" benzeri). */
+export type DataTablePivotNumberFormat = {
+  /** Hucre hizalamasi. Varsayilan: "right". */
+  textAlign?: "left" | "center" | "right";
+  /** Binlik ayirici. Varsayilan: "." ("" ayirici yok). */
+  thousandsSeparator?: "." | "," | " " | "'" | "";
+  /** Ondalik ayirici. Varsayilan: ",". */
+  decimalSeparator?: "," | ".";
+  /** Sabit ondalik basamak (0-10). Verilmezse en fazla 2 basamak, sondaki sifirlar atilir. */
+  decimalPlaces?: number;
+  /** Para birimi simgesi, ornegin "₺", "$", "TL". */
+  currencySymbol?: string;
+  /** Simgenin konumu. Varsayilan: "right" ("1.234,50 ₺"). */
+  currencyAlign?: "left" | "right";
+  /** Bos (degeri olmayan) hucrede gosterilecek metin. Varsayilan: bos. */
+  nullValue?: string;
+  /** Degeri 100 ile carpip "%" ekler (0,256 -> %25,6). */
+  isPercent?: boolean;
+};
+
+/** Arka plan ve yazi rengi (onaltilik, ornegin "#dcfce7"). */
+export type DataTablePivotColorStyle = {
+  backgroundColor?: string;
+  /** Verilmezse arka plana gore okunur renk secilir. */
+  color?: string;
+};
+
+/** Pivot veri hucresi renkleri; hucre turune gore ayri ayri. */
+export type DataTablePivotCellStyles = {
+  /** Normal veri hucreleri (1. renk). */
+  cells?: DataTablePivotColorStyle;
+  /**
+   * Veri hucreleri 2. renk: verilirse gorunen veri sutunlari sirayla 1. ve 2. renkle boyanir
+   * (toplam sutunlari sirayi etkilemez). Burada verilmeyen ayar 1. renkten gelir.
+   */
+  alternateCells?: DataTablePivotColorStyle;
+  /** Ara toplam hucreleri (acilan gruplarin toplam satir/sutunlari). */
+  totals?: DataTablePivotColorStyle;
+  /** Genel toplam satir/sutunundaki hucreler. */
+  grandTotals?: DataTablePivotColorStyle;
+};
+
+export type DataTablePivotValue = {
+  field: string;
+  aggregate: DataTablePivotAggregate;
+  /** Sutun basliginda gorunecek ad. Varsayilan: "Miktar (Toplam)" gibi. */
+  label?: string;
+  /** Bu veri alanina ozel hucre renkleri; `DataTablePivotConfig.cellStyles` uzerine yazilir. */
+  cellStyles?: DataTablePivotCellStyles;
+  /** Bu veri alanina ozel sayi bicimi; `DataTablePivotConfig.numberFormat` uzerine yazilir. */
+  numberFormat?: DataTablePivotNumberFormat;
+  /** Ozel bicimlendirici fonksiyon; verilirse numberFormat yerine kullanilir (yapilandirmaya yazilmaz). */
+  format?: (value: number) => string;
+};
+
+export type DataTablePivotFilterValue = string | number | boolean | null;
+
+export type DataTablePivotConditionOperator =
+  | "lt"
+  | "lte"
+  | "gt"
+  | "gte"
+  | "eq"
+  | "neq"
+  | "between"
+  | "notBetween"
+  | "empty"
+  | "notEmpty";
+
+export type DataTablePivotConditionFormat = {
+  backgroundColor?: string;
+  color?: string;
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
+};
+
+/** Pivot hucreleri icin kosullu bicimlendirme kurali (WebDataRocks "conditions" benzeri). */
+export type DataTablePivotCondition = {
+  id: string;
+  /** Kuralin uygulandigi veri alani; verilmezse tum veri alanlari. */
+  measure?: { field: string; aggregate: DataTablePivotAggregate };
+  operator: DataTablePivotConditionOperator;
+  /** Karsilastirma degeri (between/notBetween icin alt sinir). */
+  value?: number;
+  /** between/notBetween icin ust sinir. */
+  value2?: number;
+  /** "all": tum hucreler, "cells": yalnizca normal hucreler, "totals": yalnizca ara/genel toplamlar. */
+  applyTo?: "all" | "cells" | "totals";
+  format: DataTablePivotConditionFormat;
+  /** false ise kural saklanir ama uygulanmaz. */
+  enabled?: boolean;
+};
+
+/** Tarih alanlari icin kirilim; alan kimligi `createdAt::year` bicimindedir. */
+export type DataTablePivotDateInterval = "year" | "quarter" | "month" | "day" | "hour";
+
+export type DataTablePivotConfig<T = Record<string, unknown>> = {
+  /**
+   * Satir boyutlari (hiyerarsi sirasiyla). Tarih alanlari kirilimla verilebilir:
+   * `"createdAt::year"`, `"createdAt::month"`, `"createdAt::day"`, `"createdAt::hour"`.
+   */
+  rows: (Extract<keyof T, string> | string)[];
+  /** Sutun boyutlari (hiyerarsi sirasiyla); satirlarla ayni kurallar. */
+  columns: (Extract<keyof T, string> | string)[];
+  /** Hesaplanacak deger alanlari. */
+  values: DataTablePivotValue[];
+  /** Filtre alani: yalnizca filtrelemek icin kullanilan (satir/sutun olmayan) boyutlar. */
+  filters?: (Extract<keyof T, string> | string)[];
+  /**
+   * Alan bazli dahil edilecek degerler. Anahtar yoksa alan filtrelenmez.
+   * Bos degerler icin `null` kullanin.
+   */
+  filterValues?: Partial<Record<Extract<keyof T, string> | string, DataTablePivotFilterValue[]>>;
+  /** Acilan satir gruplarinin altinda ara toplam satiri. Varsayilan: true. */
+  showRowTotals?: boolean;
+  /** Acilan sutun gruplarinin sagindaki ara toplam sutunu. Varsayilan: true. */
+  showColumnTotals?: boolean;
+  /** En altta genel toplam satiri. Varsayilan: true. */
+  showRowGrandTotals?: boolean;
+  /** En sagda genel toplam sutunu. Varsayilan: true. */
+  showColumnGrandTotals?: boolean;
+  /** Acik satir dugumleri (yol anahtarlari). Verilmezse tumu kapali baslar. */
+  expandedRows?: string[];
+  /** Acik sutun dugumleri (yol anahtarlari). */
+  expandedColumns?: string[];
+  /** Tum veri alanlari icin varsayilan hucre renkleri (kosullu bicimlendirme bunlarin ustune uygulanir). */
+  cellStyles?: DataTablePivotCellStyles;
+  /** Tum veri alanlari icin varsayilan sayi bicimi. */
+  numberFormat?: DataTablePivotNumberFormat;
+  /** Kosullu bicimlendirme kurallari; sirayla uygulanir, sonraki kural oncekini ezer. */
+  conditions?: DataTablePivotCondition[];
+  /**
+   * Satir/sutun/filtre alanlarinin gorunen adlari (alan kimligi -> ad), ornegin
+   * `{ "department": "Departman" }`. Veri alanlari icin `values[].label` kullanilir.
+   */
+  fieldLabels?: Partial<Record<Extract<keyof T, string> | string, string>>;
+};
+
 export type DataTableProps<T> = {
+  /**
+   * Verilirse tablo pivot modunda calisir: `data` satir/sutun boyutlarina gore ozetlenir.
+   * Yalnizca istemci tarafi `data` ile calisir (`dataSource` ile desteklenmez).
+   */
+  pivot?: DataTablePivotConfig<T>;
+  /** Pivot ayarlari arac cubugundaki "Pivot" panelinden degistirildiginde cagrilir. */
+  onPivotChange?: (pivot: DataTablePivotConfig<T>) => void;
+  /** Toolbar'da "Pivot" alan secici penceresi. Varsayilan: pivot verildiyse true. */
+  enablePivotPanel?: boolean;
+  /** Tablonun ustundeki pivot alan paneli baslangicta acik mi. Tablo Gorunumu'nden degistirilebilir. Varsayilan: false. */
+  defaultPivotFieldPanel?: boolean;
+  /**
+   * Pivot arac cubugunda "Veri" dugmesi: kullanici JSON listesi yapistirir, pivot bu veriyle
+   * yeniden olusturulur ve Alan Secici acilir. Varsayilan: false.
+   */
+  enablePivotDataImport?: boolean;
+  /**
+   * Pivot arac cubugu dugmelerinin baslangic gorunurlugu, ornegin `{ configuration: false }`.
+   * Kullanici Tablo Gorunumu menusunden degistirebilir. Verilmeyen dugmeler gorunur.
+   */
+  defaultPivotToolbar?: DataTablePivotToolbar;
+  /** "Veri" dugmesiyle yeni veri yuklendiginde cagrilir. */
+  onPivotDataImport?: (rows: Record<string, unknown>[]) => void;
   data?: T[];
   dataSource?: DataTableDataSource<T>;
   remoteOperations?: DataTableRemoteOperations;

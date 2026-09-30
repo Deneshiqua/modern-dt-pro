@@ -75,7 +75,8 @@ a {
 
 .page-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* Yan kolonlar iceriklerinden dar olamaz; boylece orta baslik sekmelerin ustune binmez */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
   align-items: center;
   gap: 1rem;
   margin-bottom: 1.5rem;
@@ -164,7 +165,7 @@ html[data-page-theme="dark"] .header-icon-btn:hover {
   color: #5eb0ff;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1199px) {
   .page-header {
     grid-template-columns: 1fr;
     justify-items: stretch;
@@ -454,8 +455,6 @@ html[data-page-theme="dark"] .playground-preview-wrap {
   padding: 0.75rem 1rem;
   font-size: 0.8rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: #666;
   background: #f8f9fb;
   border-bottom: 1px solid #e4e7ec;
@@ -706,4 +705,32 @@ html[data-page-theme="dark"] .docs-code-inline {
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   font-size: 0.75rem;
+}
+
+/* Pivot Playground */
+.pv-card .playground-preview {
+  flex: none;
+  height: min(760px, 85vh);
+  padding: 0;
+}
+
+.pv-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.pv-inline-select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+}
+
+.pv-inline-select option {
+  color: #1a1a2e;
 }

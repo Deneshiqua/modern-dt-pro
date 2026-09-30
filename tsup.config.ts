@@ -7,6 +7,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   treeshake: true,
-  splitting: false,
-  external: ["react", "react-dom", "react/jsx-runtime"],
+  // Monaco JSON editoru ayri parca olarak kalsin; yalnizca JSON penceresi acilinca yuklenir
+  splitting: true,
+  external: ["react", "react-dom", "react/jsx-runtime", "monaco-editor", /^monaco-editor\//],
 });

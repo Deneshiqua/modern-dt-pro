@@ -10,6 +10,7 @@ import {
   EMPTY_CODE,
   GROUPED_CODE,
   MAPPED_CODE,
+  PIVOT_CODE,
   SELECTION_CODE,
   SQL_CODE,
   TEMPLATE_CODE,
@@ -20,6 +21,7 @@ import {
   SAMPLE_SQL,
   VALUE_MAPPERS,
   createDemoRows,
+  createPivotDemoRows,
   type DemoRow,
 } from "./data";
 
@@ -32,6 +34,7 @@ export function Examples({ onNotify }: ExamplesProps) {
   const [selected, setSelected] = useState<DemoRow[]>([]);
   const previewRows = useMemo(() => rows.slice(0, 16), [rows]);
   const serverSource = useMemo(() => createDemoRows(48), []);
+  const pivotRows = useMemo(() => createPivotDemoRows(240), []);
   const remoteDataSource = useMemo(
     () => createRemoteDemoDataSource(serverSource),
     [serverSource],
@@ -97,6 +100,25 @@ export function Examples({ onNotify }: ExamplesProps) {
           columnLabels={COLUMN_LABELS}
           defaultGrouping={["category"]}
           defaultSorting={[{ id: "createdAt", desc: false }]}
+          onNotify={onNotify}
+        />
+      </ExampleFrame>
+
+      <ExampleFrame
+        title="Pivot"
+        description="Satır ve sütun boyutlarına göre özet. Toolbar'daki Pivot panelinden alanları değiştir; satır boyutunu gruplama alanına bırakarak alt toplam al."
+        code={PIVOT_CODE}
+      >
+        <DataTable
+          data={pivotRows}
+          title="Kategori × birim pivotu"
+          excludeColumns={["id"]}
+          columnLabels={COLUMN_LABELS}
+          pivot={{
+            rows: ["category"],
+            columns: ["department"],
+            values: [{ field: "total", aggregate: "sum" }],
+          }}
           onNotify={onNotify}
         />
       </ExampleFrame>

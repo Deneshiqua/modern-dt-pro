@@ -1,6 +1,6 @@
 # Modern DataTable Pro
 
-A feature-rich, type-safe React data table built on TanStack Table. It includes grouping, filtering, sorting, row selection, virtualization, column resizing, and Excel/JSON exports out of the box.
+A feature-rich, type-safe React data table built on TanStack Table. It includes grouping, filtering, sorting, row selection, virtualization, column resizing, Excel/JSON exports, and a DevExtreme-style pivot grid out of the box.
 
 ## Features
 
@@ -8,8 +8,9 @@ A feature-rich, type-safe React data table built on TanStack Table. It includes 
 - Optional TanStack `ColumnDef` definitions for fully custom columns
 - Column sorting, text filters, and faceted value filters
 - Drag-and-drop grouping with configurable aggregations
+- Pivot grid with expandable row/column hierarchies, subtotals, date breakdowns, cell colors, number formatting, conditional formatting, JSON data import, and shareable configuration
 - Row selection with bulk action hooks
-- Excel and JSON exports
+- Excel and JSON exports from a single download menu
 - Global search and column visibility controls
 - Resizable columns, sticky headers, and compact row mode
 - Virtualized rendering for large data sets
@@ -177,6 +178,106 @@ Only columns explicitly listed in `aggregate` are aggregated. Built-in options a
 ```
 
 > The group renderer prop is named `grupCellTemplate`.
+
+## Pivot grid
+
+Pass a `pivot` configuration to render the data as a pivot grid instead of a flat table. Row and column hierarchies expand and collapse with +/−, subtotals and grand totals are calculated at every level, column headers are nested, and row/column headers stay pinned while scrolling. Pivot mode works with client-side `data` (not `dataSource`).
+
+```tsx
+import { DataTable, type DataTablePivotConfig } from "modern-dt-pro";
+
+const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
+  rows: ["region", "city"],
+  columns: ["date::year", "date::quarter"],
+  values: [{ field: "amount", aggregate: "sum", label: "Revenue" }],
+});
+
+<DataTable
+  data={sales}
+  pivot={pivot}
+  onPivotChange={setPivot}
+  enablePivotDataImport
+/>;
+```
+
+### Configuration
+
+| Key | Description |
+| --- | --- |
+| `rows` / `columns` | Dimension fields in hierarchy order. Date fields accept a breakdown: `"field::year"`, `quarter`, `month`, `day`, `hour`. |
+| `values` | `{ field, aggregate: "sum" \| "avg" \| "count" \| "min" \| "max", label?, numberFormat?, cellStyles?, format? }` |
+| `filters` / `filterValues` | Filter-only fields and the values to include per field (`null` for blanks). |
+| `fieldLabels` | Display names for row/column/filter fields, e.g. `{ "department": "Department" }`. |
+| `numberFormat` | Default number format for all data fields; `values[].numberFormat` overrides it per field. |
+| `cellStyles` | Background/text colors for `cells`, `alternateCells` (second color; visible data columns alternate in order), `totals` (subtotals), and `grandTotals`; `values[].cellStyles` overrides per field. |
+| `conditions` | Conditional formatting rules (see below). |
+| `showRowTotals` / `showColumnTotals` | Subtotal rows/columns for expanded groups (default `true`). |
+| `showRowGrandTotals` / `showColumnGrandTotals` | Grand total row/column (default `true`). |
+| `expandedRows` / `expandedColumns` | Paths of expanded nodes; updated by +/− and expand/collapse all. |
+
+Date values such as `"2025-03-14"` or `"2025-03-14T09:30:00"` are detected automatically and read in local time. Dropping a date field onto a dimension area expands it to Year › Month › Day.
+
+### Built-in UI
+
+- **Toolbar visibility** (Table View menu → Toolbar): show or hide the Data, Configuration, Pivot, Cell Colors, Number Format, and Conditional Formatting buttons individually. Initial state comes from `defaultPivotToolbar`, e.g. `{ configuration: false }`. The field chooser still opens after a data import when its button is hidden.
+- **Field chooser** (Pivot button): drag fields between Filter, Row, Column, and Data areas; filter values with the funnel icon; switch the summary type with Σ. The dialog can be maximized and resized.
+- **Field panel** (Table View menu): filter fields above the grid, data and row fields in the top-left corner, column fields above the column headers.
+- **Chip context menu** (right click): Rename (F2), Reset name, Remove (Delete).
+- **Cell colors** (swatch button): background and text colors for data cells (with an optional second color that alternates column by column in the given order; total columns do not break the sequence), subtotals, and grand totals, as defaults or per data field. Text color is picked automatically for readability when omitted; conditional formatting is applied on top.
+- **Number format** (# button): WebDataRocks-style "Format cells" dialog with alignment, thousands/decimal separators, decimal places, currency symbol and position, empty-cell text, and percent display. Choose "All values" for the default or a data field for a per-field override; changes are previewed and applied with Apply. Excel exports keep raw numbers.
+- **Conditional formatting** (brush button): rules with a data field, an operator (`lt`, `lte`, `gt`, `gte`, `eq`, `neq`, `between`, `notBetween`, `empty`, `notEmpty`), a scope (`all`, `cells`, `totals`), and a format (background, text color, bold, italic). Later rules override earlier ones.
+- **Data** button (`enablePivotDataImport`): paste or load a JSON array (or `{ "data": [...] }`). Errors are reported with line and column; applying resets the pivot and opens the field chooser. `onPivotDataImport(rows)` is called.
+- **Configuration** button: summary and JSON view of the field chooser, cell colors, number format, and conditional formatting settings. Copy, download, load from file, edit, and apply with structural validation.
+- **Download**: the pivot grid (merged cells) or the filtered raw data as Excel.
+- Warnings for non-numeric sums, missing fields, empty data areas, and very wide/tall layouts.
+
+```json
+{
+  "rows": ["region"],
+  "columns": ["date::year"],
+  "values": [{ "field": "amount", "aggregate": "sum", "label": "Revenue" }],
+  "fieldLabels": { "region": "Region" },
+  "cellStyles": {
+    "totals": { "backgroundColor": "#fef9c3" },
+    "grandTotals": { "backgroundColor": "#dbeafe", "color": "#1e40af" }
+  },
+  "numberFormat": {
+    "textAlign": "right",
+    "thousandsSeparator": ",",
+    "decimalSeparator": ".",
+    "decimalPlaces": 2,
+    "currencySymbol": "$",
+    "currencyAlign": "left",
+    "nullValue": "-",
+    "isPercent": false
+  },
+  "conditions": [
+    {
+      "measure": { "field": "amount", "aggregate": "sum" },
+      "operator": "gt",
+      "value": 30000,
+      "applyTo": "cells",
+      "format": { "backgroundColor": "#dcfce7", "color": "#166534" }
+    }
+  ]
+}
+```
+
+### Pivot props
+
+- `pivot`: pivot configuration; renders the pivot grid when present
+- `onPivotChange`: called whenever the configuration changes in the UI
+- `enablePivotPanel`: shows the field chooser button, default `true`
+- `defaultPivotFieldPanel`: opens the field panel initially, default `false`
+- `enablePivotDataImport`: shows the JSON Data button, default `false`
+- `onPivotDataImport`: called with the imported rows
+- `defaultPivotToolbar`: initial toolbar button visibility (`data`, `configuration`, `fieldChooser`, `cellStyles`, `numberFormat`, `conditions`), all visible by default
+
+Headless helpers are exported as well: `buildPivotModel`, `layoutPivot`, `detectPivotFields`, `collectExpandablePaths`, and `pivotIntervalFieldId`.
+
+### JSON editor (Monaco)
+
+The Data and Configuration dialogs use a bundled `monaco-editor` (no CDN) with syntax highlighting and schema-based completion. It is code-split and only loaded when a JSON dialog opens; a plain textarea is used while loading or if it fails. Workers are loaded with Vite's `?worker` imports, so the pivot JSON editor targets Vite projects. An existing `self.MonacoEnvironment` is respected.
 
 ## Value mapping
 
@@ -373,7 +474,7 @@ Alternatively, provide an `onNotify` callback to an individual table.
 - `rowSelection` / `onRowSelectionChange`: controlled row selection
 - `getRowId`: stable row identifier
 - `enableVirtualization`: enables virtualized rows
-- `enableExcelExport` / `enableJsonExport`: controls export menus
+- `enableExcelExport` / `enableJsonExport`: controls the formats in the download menu
 - `enableSearch`: controls global search
 - `enableColumnResizing`: controls drag-to-resize
 - `fitColumns`: fits columns to the available width
@@ -383,6 +484,7 @@ Alternatively, provide an `onNotify` callback to an individual table.
 - `initialPageSize` / `pageSizeOptions`: pagination defaults
 - `itemLabel`: record label used in selection and pagination summaries
 - `toolbarExtra`: renders custom toolbar content
+- `pivot` / `onPivotChange`: pivot grid mode (see [Pivot grid](#pivot-grid))
 
 See [`DataTableProps`](https://github.com/deneshiqua/modern-dt-pro/blob/main/src/types.ts) for the complete typed API.
 
