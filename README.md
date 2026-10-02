@@ -219,15 +219,16 @@ Date values such as `"2025-03-14"` or `"2025-03-14T09:30:00"` are detected autom
 
 ### Built-in UI
 
-- **Toolbar visibility** (Table View menu → Toolbar): show or hide the Data, Configuration, Pivot, Cell Colors, Number Format, and Conditional Formatting buttons individually. Initial state comes from `defaultPivotToolbar`, e.g. `{ configuration: false }`. The field chooser still opens after a data import when its button is hidden.
-- **Field chooser** (Pivot button): drag fields between Filter, Row, Column, and Data areas; filter values with the funnel icon; switch the summary type with Σ. The dialog can be maximized and resized.
+- **Pivot settings** (Pivot button): one resizable dialog with tabs for Field Chooser, Conditional Formatting, Number Format, Cell Colors, Configuration, and Data. Drafts awaiting Apply are kept while switching tabs; tab headers show error counts, rule counts, and "configured" dots.
+- **Tab visibility** (Table View menu → Pivot tabs): show or hide each settings tab. Initial state comes from `defaultPivotToolbar`, e.g. `{ configuration: false }`.
+- **Field chooser** tab: drag fields between Filter, Row, Column, and Data areas; filter values with the funnel icon; switch the summary type with Σ. The dialog can be maximized and resized.
 - **Field panel** (Table View menu): filter fields above the grid, data and row fields in the top-left corner, column fields above the column headers.
 - **Chip context menu** (right click): Rename (F2), Reset name, Remove (Delete).
-- **Cell colors** (swatch button): background and text colors for data cells (with an optional second color that alternates column by column in the given order; total columns do not break the sequence), subtotals, and grand totals, as defaults or per data field. Text color is picked automatically for readability when omitted; conditional formatting is applied on top.
-- **Number format** (# button): WebDataRocks-style "Format cells" dialog with alignment, thousands/decimal separators, decimal places, currency symbol and position, empty-cell text, and percent display. Choose "All values" for the default or a data field for a per-field override; changes are previewed and applied with Apply. Excel exports keep raw numbers.
-- **Conditional formatting** (brush button): rules with a data field, an operator (`lt`, `lte`, `gt`, `gte`, `eq`, `neq`, `between`, `notBetween`, `empty`, `notEmpty`), a scope (`all`, `cells`, `totals`), and a format (background, text color, bold, italic). Later rules override earlier ones.
-- **Data** button (`enablePivotDataImport`): paste or load a JSON array (or `{ "data": [...] }`). Errors are reported with line and column; applying resets the pivot and opens the field chooser. `onPivotDataImport(rows)` is called.
-- **Configuration** button: summary and JSON view of the field chooser, cell colors, number format, and conditional formatting settings. Copy, download, load from file, edit, and apply with structural validation.
+- **Cell colors** tab: background and text colors for data cells (with an optional second color that alternates column by column in the given order; total columns do not break the sequence), subtotals, and grand totals, as defaults or per data field. Text color is picked automatically for readability when omitted; conditional formatting is applied on top.
+- **Number format** tab: WebDataRocks-style "Format cells" settings with alignment, thousands/decimal separators, decimal places, currency symbol and position, empty-cell text, and percent display. Choose "All values" for the default or a data field for a per-field override; changes are previewed and applied with Apply. Excel exports keep raw numbers.
+- **Conditional formatting** tab: rules with a data field, an operator (`lt`, `lte`, `gt`, `gte`, `eq`, `neq`, `between`, `notBetween`, `empty`, `notEmpty`), a scope (`all`, `cells`, `totals`), and a format (background, text color, bold, italic). Later rules override earlier ones.
+- **Data** tab (`enablePivotDataImport`): shows the current data as JSON; edit it, clear it and paste a new JSON array (or `{ "data": [...] }`), or load a file. Apply is disabled until the data changes. Errors are reported with line and column; applying resets the pivot and switches to the Field Chooser tab. `onPivotDataImport(rows)` is called.
+- **Configuration** tab: summary and JSON view of the field chooser, cell colors, number format, and conditional formatting settings. Copy, download, load from file, edit, and apply with structural validation.
 - **Download**: the pivot grid (merged cells) or the filtered raw data as Excel.
 - Warnings for non-numeric sums, missing fields, empty data areas, and very wide/tall layouts.
 
@@ -267,11 +268,11 @@ Date values such as `"2025-03-14"` or `"2025-03-14T09:30:00"` are detected autom
 
 - `pivot`: pivot configuration; renders the pivot grid when present
 - `onPivotChange`: called whenever the configuration changes in the UI
-- `enablePivotPanel`: shows the field chooser button, default `true`
+- `enablePivotPanel`: shows the Pivot settings button, default `true`
 - `defaultPivotFieldPanel`: opens the field panel initially, default `false`
-- `enablePivotDataImport`: shows the JSON Data button, default `false`
+- `enablePivotDataImport`: shows the Data tab, default `false`
 - `onPivotDataImport`: called with the imported rows
-- `defaultPivotToolbar`: initial toolbar button visibility (`data`, `configuration`, `fieldChooser`, `cellStyles`, `numberFormat`, `conditions`), all visible by default
+- `defaultPivotToolbar`: initial settings tab visibility (`data`, `configuration`, `fieldChooser`, `cellStyles`, `numberFormat`, `conditions`), all visible by default
 
 Headless helpers are exported as well: `buildPivotModel`, `layoutPivot`, `detectPivotFields`, `collectExpandablePaths`, and `pivotIntervalFieldId`.
 

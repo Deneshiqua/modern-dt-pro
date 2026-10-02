@@ -1,6 +1,4 @@
-import { Fragment, useEffect, useState, type CSSProperties } from "react";
-import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from "@headlessui/react";
-import { SwatchIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { useEffect, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 
 import { Button } from "../ui";
@@ -12,12 +10,6 @@ import {
   hasPivotCellStyles,
   pivotColorStyle,
 } from "./pivotCellStyles";
-import {
-  MAXIMIZED_DIALOG_CLASS,
-  MaximizeButton,
-  RESIZABLE_DIALOG_LIMITS_CLASS,
-  useResizableDialog,
-} from "./resizableDialog";
 
 type Styles = DataTablePivotCellStyles;
 /** Duzenlenebilen renk anahtari: uc hucre turu + veri hucrelerinin 2. rengi */
@@ -42,28 +34,8 @@ type PivotCellStylesButtonProps = {
   onApply: (cellStyles: Styles | undefined, perValue: (Styles | undefined)[]) => void;
 };
 
-export function PivotCellStylesButton(props: PivotCellStylesButtonProps) {
-  const [open, setOpen] = useState(false);
-  const active = hasPivotCellStyles(props.cellStyles) || props.values.some((value) => hasPivotCellStyles(value.cellStyles));
-  return (
-    <>
-      <Button
-        variant="flat"
-        isIcon
-        className="relative size-8 rounded-full"
-        title="Hücre renkleri"
-        aria-label="Hücre renkleri"
-        onClick={() => setOpen(true)}
-      >
-        <SwatchIcon className="size-4.5" />
-        {active ? <span className="bg-primary-600 absolute top-0.5 right-0.5 size-2 rounded-full" aria-hidden="true" /> : null}
-      </Button>
-      <PivotCellStylesDialog {...props} open={open} onClose={() => setOpen(false)} />
-    </>
-  );
-}
 
-function PivotCellStylesDialog({
+export function PivotCellStylesPanel({
   open,
   onClose,
   cellStyles,
@@ -71,7 +43,6 @@ function PivotCellStylesDialog({
   valueLabel,
   onApply,
 }: PivotCellStylesButtonProps & { open: boolean; onClose: () => void }) {
-  const resizable = useResizableDialog(open);
   const [draft, setDraft] = useState<Draft>({ defaults: {}, perValue: [] });
   /** "" = tum degerler, "0", "1"... = veri alani sirasi */
   const [target, setTarget] = useState("");
@@ -123,134 +94,81 @@ function PivotCellStylesDialog({
   };
 
   return (
-    <Transition show={open} as={Fragment}>
-      <Dialog onClose={onClose} className="relative z-[200]">
-        <TransitionChild
-          as={Fragment}
-          enter="ease-out duration-150"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-100"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60" aria-hidden="true" />
-        </TransitionChild>
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-150"
-            enterFrom="opacity-0 scale-95"
-            enterTo="opacity-100 scale-100"
-            leave="ease-in duration-100"
-            leaveFrom="opacity-100 scale-100"
-            leaveTo="opacity-0 scale-95"
-          >
-            <DialogPanel
-              ref={resizable.panelRef}
-              className={clsx(
-                "dtp dark:bg-dark-750 dark:border-dark-500 dark:text-dark-100 flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-gray-700 shadow-2xl",
-                resizable.maximized
-                  ? MAXIMIZED_DIALOG_CLASS
-                  : clsx("h-auto w-[min(44rem,calc(100vw-2rem))]", RESIZABLE_DIALOG_LIMITS_CLASS),
-              )}
+    <>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <label className="flex flex-col gap-1">
+          <span className="dark:text-dark-300 text-xs font-medium text-gray-600">Hangi değer?</span>
+          <select className={FIELD_CLASS} value={target} onChange={(event) => setTarget(event.target.value)}>
+            <option value="">Tüm değerler (varsayılan renkler)</option>
+            {values.map((value, i) => (
+              <option key={`${value.field}-${i}`} value={String(i)}>
+                {valueLabel(value)}{hasPivotCellStyles(draft.perValue[i]) ? " • özel renk" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
+          {isValue
+            ? "Bu veri alanında seçmediğiniz renkler varsayılandan gelir."
+            : "Tüm veri alanlarına uygulanır. Koşullu biçimlendirme bu renklerin üstüne uygulanır."}
+        </p>
+
+        <div className="dark:border-dark-500 mt-5 border-t border-gray-200 pt-3">
+          {PIVOT_CELL_KINDS.map((kind) => (
+            <div
+              key={kind.id}
+              className="dark:border-dark-500 flex flex-col gap-2 border-b border-gray-200 py-3 last:border-b-0"
             >
-              <div className="dark:border-dark-500 flex items-center gap-3 border-b border-gray-200 px-5 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="dark:text-dark-50 text-lg font-semibold text-gray-900">Hücre Renkleri</DialogTitle>
-                  <p className="dark:text-dark-300 text-xs text-gray-500">
-                    Veri ve toplam hücrelerinin arka plan ve yazı renklerini belirleyin.
-                  </p>
-                </div>
-                <MaximizeButton maximized={resizable.maximized} onClick={resizable.toggleMaximized} />
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Kapat"
-                  title="Kapat"
-                  className="dark:hover:bg-dark-500 grid size-8 place-items-center rounded-full text-gray-500 hover:bg-gray-100"
-                >
-                  <XMarkIcon className="size-5" />
-                </button>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                <label className="flex flex-col gap-1">
-                  <span className="dark:text-dark-300 text-xs font-medium text-gray-600">Hangi değer?</span>
-                  <select className={FIELD_CLASS} value={target} onChange={(event) => setTarget(event.target.value)}>
-                    <option value="">Tüm değerler (varsayılan renkler)</option>
-                    {values.map((value, i) => (
-                      <option key={`${value.field}-${i}`} value={String(i)}>
-                        {valueLabel(value)}{hasPivotCellStyles(draft.perValue[i]) ? " • özel renk" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
-                  {isValue
-                    ? "Bu veri alanında seçmediğiniz renkler varsayılandan gelir."
-                    : "Tüm veri alanlarına uygulanır. Koşullu biçimlendirme bu renklerin üstüne uygulanır."}
-                </p>
-
-                <div className="dark:border-dark-500 mt-5 border-t border-gray-200 pt-3">
-                  {PIVOT_CELL_KINDS.map((kind) => (
-                    <div
-                      key={kind.id}
-                      className="dark:border-dark-500 flex flex-col gap-2 border-b border-gray-200 py-3 last:border-b-0"
-                    >
-                      <ColorRow
-                        title={kind.label}
-                        hint={kind.id === "cells" ? "1. renk — verdiğiniz sırayla ilk sütun" : kind.hint}
-                        styleKey={kind.id}
-                        own={own}
-                        preview={effective(kind.id)}
-                        inheritedLabel={inheritedLabel}
-                        onChange={setColor}
-                      />
-                      {kind.id === "cells" ? (
-                        <ColorRow
-                          title=""
-                          hint="2. renk — sütunlar sırayla 1. ve 2. renkle boyanır; boş bırakılırsa hep 1. renk"
-                          styleKey="alternateCells"
-                          own={own}
-                          preview={hasAlternate ? effective("alternateCells") : effective("cells")}
-                          inheritedLabel={inheritedLabel}
-                          onChange={setColor}
-                        />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
-                <Button
-                  variant="flat"
-                  className="mr-auto h-9 px-3 text-sm"
-                  disabled={!hasPivotCellStyles(own)}
-                  onClick={resetTarget}
-                >
-                  {isValue ? "Bu alanın renklerini sıfırla" : "Varsayılan renkleri sıfırla"}
-                </Button>
-                <Button variant="flat" className="h-9 px-3 text-sm" onClick={onClose}>
-                  Vazgeç
-                </Button>
-                <Button
-                  color="primary"
-                  className="h-9 px-5 text-sm"
-                  onClick={() => {
-                    onApply(cleanPivotCellStyles(draft.defaults), draft.perValue.map(cleanPivotCellStyles));
-                    onClose();
-                  }}
-                >
-                  Uygula
-                </Button>
-              </div>
-            </DialogPanel>
-          </TransitionChild>
+              <ColorRow
+                title={kind.label}
+                hint={kind.id === "cells" ? "1. renk — verdiğiniz sırayla ilk sütun" : kind.hint}
+                styleKey={kind.id}
+                own={own}
+                preview={effective(kind.id)}
+                inheritedLabel={inheritedLabel}
+                onChange={setColor}
+              />
+              {kind.id === "cells" ? (
+                <ColorRow
+                  title=""
+                  hint="2. renk — sütunlar sırayla 1. ve 2. renkle boyanır; boş bırakılırsa hep 1. renk"
+                  styleKey="alternateCells"
+                  own={own}
+                  preview={hasAlternate ? effective("alternateCells") : effective("cells")}
+                  inheritedLabel={inheritedLabel}
+                  onChange={setColor}
+                />
+              ) : null}
+            </div>
+          ))}
         </div>
-      </Dialog>
-    </Transition>
+      </div>
+
+      <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
+        <Button
+          variant="flat"
+          className="mr-auto h-9 px-3 text-sm"
+          disabled={!hasPivotCellStyles(own)}
+          onClick={resetTarget}
+        >
+          {isValue ? "Bu alanın renklerini sıfırla" : "Varsayılan renkleri sıfırla"}
+        </Button>
+        <Button variant="flat" className="h-9 px-3 text-sm" onClick={onClose}>
+          Vazgeç
+        </Button>
+        <Button
+          color="primary"
+          className="h-9 px-5 text-sm"
+          onClick={() => {
+            onApply(cleanPivotCellStyles(draft.defaults), draft.perValue.map(cleanPivotCellStyles));
+            onClose();
+          }}
+        >
+          Uygula
+        </Button>
+      </div>
+    </>
   );
 }
 

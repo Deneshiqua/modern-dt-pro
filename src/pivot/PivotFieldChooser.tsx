@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -11,15 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
   Popover,
   PopoverButton,
   PopoverPanel,
   Portal,
-  Transition,
-  TransitionChild,
 } from "@headlessui/react";
 import {
   ArrowUturnLeftIcon,
@@ -31,10 +25,8 @@ import {
   MagnifyingGlassIcon,
   Squares2X2Icon,
   PencilSquareIcon,
-  TableCellsIcon,
   TrashIcon,
   ViewColumnsIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
@@ -54,12 +46,6 @@ import {
   type PivotField,
   type PivotValueMappers,
 } from "./pivotEngine";
-import {
-  MAXIMIZED_DIALOG_CLASS,
-  MaximizeButton,
-  RESIZABLE_DIALOG_LIMITS_CLASS,
-  useResizableDialog,
-} from "./resizableDialog";
 
 import type { PivotIssue } from "./pivotValidation";
 
@@ -171,36 +157,8 @@ type PivotFieldChooserProps = {
   hideButton?: boolean;
 };
 
-export function PivotFieldChooser({ open: openProp, onOpenChange, hideButton = false, ...props }: PivotFieldChooserProps) {
-  const [openState, setOpenState] = useState(false);
-  const open = openProp ?? openState;
-  const setOpen = (next: boolean) => {
-    if (openProp === undefined) setOpenState(next);
-    onOpenChange?.(next);
-  };
-  const errorCount = props.issues?.filter((issue) => issue.level === "error").length ?? 0;
-  return (
-    <>
-      {hideButton ? null : <Button
-        variant="flat"
-        className="relative h-8 gap-1.5 rounded-full px-3 text-sm"
-        title={errorCount > 0 ? `Alan seçici — ${errorCount} hata` : "Alan seçici"}
-        onClick={() => setOpen(true)}
-      >
-        <TableCellsIcon className="size-5" />
-        <span>Pivot</span>
-        {errorCount > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full bg-red-600 text-[10px] font-semibold text-white">
-            !
-          </span>
-        ) : null}
-      </Button>}
-      <PivotFieldChooserDialog {...props} open={open} onClose={() => setOpen(false)} />
-    </>
-  );
-}
 
-function PivotFieldChooserDialog({
+export function PivotFieldChooserPanel({
   open,
   onClose,
   config,
@@ -212,7 +170,6 @@ function PivotFieldChooserDialog({
   issues = [],
 }: Omit<PivotFieldChooserProps, "open" | "onOpenChange"> & { open: boolean; onClose: () => void }) {
   const [search, setSearch] = useState("");
-  const resizable = useResizableDialog(open);
   const areas = usePivotAreas({ config, fields, data, valueMappers, dateFields, onChange });
   const { lists, move, dragProps, dropProps, dropTarget } = areas;
   const usedFields = new Set([
@@ -263,174 +220,117 @@ function PivotFieldChooserDialog({
   };
 
   return (
-    <Transition
-      show={open}
-      as={Fragment}
-      afterLeave={() => setSearch("")}
-    >
-      <Dialog onClose={onClose} className="relative z-[200]">
-        <TransitionChild
-          as={Fragment}
-          enter="ease-out duration-150"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-100"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60" aria-hidden="true" />
-        </TransitionChild>
+    <>
 
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-150"
-            enterFrom="opacity-0 scale-95"
-            enterTo="opacity-100 scale-100"
-            leave="ease-in duration-100"
-            leaveFrom="opacity-100 scale-100"
-            leaveTo="opacity-0 scale-95"
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-4 gap-y-3 overflow-y-auto p-5 md:grid-cols-2 md:grid-rows-[minmax(16rem,3fr)_minmax(8rem,2fr)]">
+        <section className="flex min-h-0 flex-col">
+          <AreaTitle icon={<Squares2X2Icon className="size-4" />}>Tüm alanlar</AreaTitle>
+          <div
+            className={clsx(
+              "dark:border-dark-500 flex h-64 flex-col rounded-md border border-gray-300 md:h-auto md:min-h-0 md:flex-1",
+              dropTarget?.area === "all" && "ring-primary-500 ring-2",
+            )}
+            {...dropProps("all")}
           >
-            <DialogPanel
-              ref={resizable.panelRef}
+            <div className="dark:border-dark-500 border-b border-gray-200 p-2">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Alan ara..."
+                prefix={<MagnifyingGlassIcon className="size-4" />}
+                classNames={{ root: "w-full", input: "text-sm" }}
+              />
+            </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+              {filteredFields.map((field) => (
+                <li
+                  key={field.id}
+                  {...dragProps({ field: field.id, from: "all", index: -1 })}
+                  className={clsx(
+                    "dark:hover:bg-dark-600 flex cursor-grab items-center gap-2 rounded px-1 py-1.5 hover:bg-gray-50",
+                    field.parentId && "ml-6",
+                  )}
+                >
+                  <Checkbox
+                    label={field.interval ? PIVOT_INTERVAL_LABELS[field.interval] : field.label}
+                    checked={isUsed(field)}
+                    onChange={(event) => toggleField(field, event.currentTarget.checked)}
+                  />
+                  {field.isNumeric ? (
+                    <span className="ml-auto text-[10px] font-semibold text-gray-400">123</span>
+                  ) : field.isDate ? (
+                    <CalendarDaysIcon className="ml-auto size-3.5 text-gray-400" />
+                  ) : null}
+                </li>
+              ))}
+              {filteredFields.length === 0 ? (
+                <li className="py-2 text-xs opacity-60">Eşleşen alan yok</li>
+              ) : null}
+            </ul>
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-col gap-3">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <AreaTitle icon={<Bars3BottomLeftIcon className="size-4" />}>Satır alanları</AreaTitle>
+            {areas.renderArea("rows")}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <AreaTitle icon={<ViewColumnsIcon className="size-4" />}>Sütun alanları</AreaTitle>
+            {areas.renderArea("columns")}
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-col">
+          <AreaTitle icon={<FunnelIcon className="size-4" />}>Filtre alanları</AreaTitle>
+          {areas.renderArea("filters")}
+        </section>
+
+        <section className="flex min-h-0 flex-col">
+          <AreaTitle icon={<span className="text-sm leading-none font-semibold">Σ</span>}>
+            Veri alanları
+          </AreaTitle>
+          {areas.renderArea("values")}
+        </section>
+      </div>
+
+      {issues.length > 0 ? (
+        <ul
+          role="alert"
+          className="dark:border-dark-500 flex max-h-32 flex-col gap-1 overflow-y-auto border-t border-gray-200 px-5 py-2.5"
+        >
+          {issues.map((issue) => (
+            <li
+              key={issue.message}
               className={clsx(
-                "dark:bg-dark-750 dark:border-dark-500 dark:text-dark-100 flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-gray-700 shadow-2xl",
-                resizable.maximized
-                  ? MAXIMIZED_DIALOG_CLASS
-                  : clsx("h-[min(40rem,calc(100dvh-2rem))] w-[min(48rem,calc(100vw-2rem))]", RESIZABLE_DIALOG_LIMITS_CLASS),
+                "flex items-start gap-2 text-sm",
+                issue.level === "error" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-400",
               )}
             >
-              <div className="dark:border-dark-500 flex items-center justify-between border-b border-gray-200 px-5 py-3.5">
-                <DialogTitle className="dark:text-dark-50 text-lg font-semibold text-gray-900">
-                  Alan Seçici
-                </DialogTitle>
-                <div className="flex items-center gap-1">
-                  <MaximizeButton maximized={resizable.maximized} onClick={resizable.toggleMaximized} />
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    aria-label="Kapat"
-                    title="Kapat"
-                    className="dark:hover:bg-dark-500 grid size-8 place-items-center rounded-full text-gray-500 hover:bg-gray-100"
-                  >
-                    <XMarkIcon className="size-5" />
-                  </button>
-                </div>
-              </div>
+              <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
+              {issue.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-4 gap-y-3 overflow-y-auto p-5 md:grid-cols-2 md:grid-rows-[minmax(16rem,3fr)_minmax(8rem,2fr)]">
-                <section className="flex min-h-0 flex-col">
-                  <AreaTitle icon={<Squares2X2Icon className="size-4" />}>Tüm alanlar</AreaTitle>
-                  <div
-                    className={clsx(
-                      "dark:border-dark-500 flex h-64 flex-col rounded-md border border-gray-300 md:h-auto md:min-h-0 md:flex-1",
-                      dropTarget?.area === "all" && "ring-primary-500 ring-2",
-                    )}
-                    {...dropProps("all")}
-                  >
-                    <div className="dark:border-dark-500 border-b border-gray-200 p-2">
-                      <Input
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Alan ara..."
-                        prefix={<MagnifyingGlassIcon className="size-4" />}
-                        classNames={{ root: "w-full", input: "text-sm" }}
-                      />
-                    </div>
-                    <ul className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-                      {filteredFields.map((field) => (
-                        <li
-                          key={field.id}
-                          {...dragProps({ field: field.id, from: "all", index: -1 })}
-                          className={clsx(
-                            "dark:hover:bg-dark-600 flex cursor-grab items-center gap-2 rounded px-1 py-1.5 hover:bg-gray-50",
-                            field.parentId && "ml-6",
-                          )}
-                        >
-                          <Checkbox
-                            label={field.interval ? PIVOT_INTERVAL_LABELS[field.interval] : field.label}
-                            checked={isUsed(field)}
-                            onChange={(event) => toggleField(field, event.currentTarget.checked)}
-                          />
-                          {field.isNumeric ? (
-                            <span className="ml-auto text-[10px] font-semibold text-gray-400">123</span>
-                          ) : field.isDate ? (
-                            <CalendarDaysIcon className="ml-auto size-3.5 text-gray-400" />
-                          ) : null}
-                        </li>
-                      ))}
-                      {filteredFields.length === 0 ? (
-                        <li className="py-2 text-xs opacity-60">Eşleşen alan yok</li>
-                      ) : null}
-                    </ul>
-                  </div>
-                </section>
-
-                <section className="flex min-h-0 flex-col gap-3">
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <AreaTitle icon={<Bars3BottomLeftIcon className="size-4" />}>Satır alanları</AreaTitle>
-                    {areas.renderArea("rows")}
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <AreaTitle icon={<ViewColumnsIcon className="size-4" />}>Sütun alanları</AreaTitle>
-                    {areas.renderArea("columns")}
-                  </div>
-                </section>
-
-                <section className="flex min-h-0 flex-col">
-                  <AreaTitle icon={<FunnelIcon className="size-4" />}>Filtre alanları</AreaTitle>
-                  {areas.renderArea("filters")}
-                </section>
-
-                <section className="flex min-h-0 flex-col">
-                  <AreaTitle icon={<span className="text-sm leading-none font-semibold">Σ</span>}>
-                    Veri alanları
-                  </AreaTitle>
-                  {areas.renderArea("values")}
-                </section>
-              </div>
-
-              {issues.length > 0 ? (
-                <ul
-                  role="alert"
-                  className="dark:border-dark-500 flex max-h-32 flex-col gap-1 overflow-y-auto border-t border-gray-200 px-5 py-2.5"
-                >
-                  {issues.map((issue) => (
-                    <li
-                      key={issue.message}
-                      className={clsx(
-                        "flex items-start gap-2 text-sm",
-                        issue.level === "error" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-400",
-                      )}
-                    >
-                      <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
-                      {issue.message}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
-                <p className="mr-auto text-xs opacity-70">
-                  Alanları kutular arasında sürükleyin. Filtre simgesiyle değer seçin.
-                </p>
-                <Button
-                  variant="flat"
-                  className="h-8 px-3 text-sm"
-                  onClick={() =>
-                    onChange({ ...config, rows: [], columns: [], filters: [], values: [], filterValues: {} })}
-                >
-                  Temizle
-                </Button>
-                <Button color="primary" className="h-8 px-4 text-sm" onClick={onClose}>
-                  Tamam
-                </Button>
-              </div>
-            </DialogPanel>
-          </TransitionChild>
-        </div>
-      </Dialog>
-    </Transition>
+      <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
+        <p className="mr-auto text-xs opacity-70">
+          Alanları kutular arasında sürükleyin. Filtre simgesiyle değer seçin.
+        </p>
+        <Button
+          variant="flat"
+          className="h-8 px-3 text-sm"
+          onClick={() =>
+            onChange({ ...config, rows: [], columns: [], filters: [], values: [], filterValues: {} })}
+        >
+          Temizle
+        </Button>
+        <Button color="primary" className="h-8 px-4 text-sm" onClick={onClose}>
+          Tamam
+        </Button>
+      </div>
+    </>
   );
 }
 

@@ -1,13 +1,8 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
   Popover,
   PopoverButton,
   PopoverPanel,
-  Transition,
-  TransitionChild,
 } from "@headlessui/react";
 import {
   ExclamationTriangleIcon,
@@ -16,7 +11,6 @@ import {
   PaintBrushIcon,
   PlusIcon,
   TrashIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
@@ -34,12 +28,6 @@ import {
   pivotOperatorArity,
   resolvePivotCellStyle,
 } from "./pivotConditions";
-import {
-  MAXIMIZED_DIALOG_CLASS,
-  MaximizeButton,
-  RESIZABLE_DIALOG_LIMITS_CLASS,
-  useResizableDialog,
-} from "./resizableDialog";
 
 /** Excel'deki hazir "Hucre stili" secenekleri. */
 const FORMAT_PRESETS: { label: string; format: DataTablePivotConditionFormat }[] = [
@@ -127,32 +115,8 @@ type PivotConditionsButtonProps = {
   onChange: (conditions: DataTablePivotCondition[]) => void;
 };
 
-export function PivotConditionsButton(props: PivotConditionsButtonProps) {
-  const [open, setOpen] = useState(false);
-  const activeCount = props.conditions.filter((condition) => condition.enabled !== false).length;
-  return (
-    <>
-      <Button
-        variant="flat"
-        isIcon
-        className="relative size-8 rounded-full"
-        title="Koşullu biçimlendirme"
-        aria-label="Koşullu biçimlendirme"
-        onClick={() => setOpen(true)}
-      >
-        <PaintBrushIcon className="size-4.5" />
-        {activeCount > 0 ? (
-          <span className="bg-primary-600 absolute -top-0.5 -right-0.5 grid min-w-4 place-items-center rounded-full px-1 text-[10px] leading-4 font-semibold text-white">
-            {activeCount}
-          </span>
-        ) : null}
-      </Button>
-      <PivotConditionsDialog {...props} open={open} onClose={() => setOpen(false)} />
-    </>
-  );
-}
 
-function PivotConditionsDialog({
+export function PivotConditionsPanel({
   open,
   onClose,
   conditions,
@@ -161,7 +125,6 @@ function PivotConditionsDialog({
   onChange,
 }: PivotConditionsButtonProps & { open: boolean; onClose: () => void }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(conditions[0]?.id);
-  const resizable = useResizableDialog(open);
   const selected = conditions.find((condition) => condition.id === selectedId) ?? conditions[0];
 
   useEffect(() => {
@@ -205,196 +168,140 @@ function PivotConditionsDialog({
   };
 
   return (
-    <Transition show={open} as={Fragment}>
-      <Dialog onClose={onClose} className="relative z-[200]">
-        <TransitionChild
-          as={Fragment}
-          enter="ease-out duration-150"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-100"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-gray-900/40 dark:bg-black/60" aria-hidden="true" />
-        </TransitionChild>
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-150"
-            enterFrom="opacity-0 scale-95"
-            enterTo="opacity-100 scale-100"
-            leave="ease-in duration-100"
-            leaveFrom="opacity-100 scale-100"
-            leaveTo="opacity-0 scale-95"
-          >
-            <DialogPanel
-              ref={resizable.panelRef}
-              className={clsx(
-                "dtp dark:bg-dark-750 dark:border-dark-500 dark:text-dark-100 flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-gray-700 shadow-2xl",
-                resizable.maximized
-                  ? MAXIMIZED_DIALOG_CLASS
-                  // Yukseklik icerige gore; tum adimlar kaydirmadan gorunur, ekrani asarsa icerik kayar
-                  : clsx("h-auto w-[min(60rem,calc(100vw-2rem))]", RESIZABLE_DIALOG_LIMITS_CLASS),
-              )}
-            >
-              <div className="dark:border-dark-500 flex items-center gap-3 border-b border-gray-200 px-5 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="dark:text-dark-50 text-lg font-semibold text-gray-900">
-                    Koşullu Biçimlendirme
-                  </DialogTitle>
-                  <p className="dark:text-dark-300 text-xs text-gray-500">
-                    Belirlediğiniz koşulu sağlayan hücreleri renklendirin.
-                  </p>
-                </div>
-                <MaximizeButton maximized={resizable.maximized} onClick={resizable.toggleMaximized} />
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Kapat"
-                  title="Kapat"
-                  className="dark:hover:bg-dark-500 grid size-8 place-items-center rounded-full text-gray-500 hover:bg-gray-100"
-                >
-                  <XMarkIcon className="size-5" />
-                </button>
-              </div>
+    <>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[20rem_minmax(0,1fr)]">
-                {/* Kural listesi */}
-                <aside className="dark:border-dark-500 dark:bg-dark-800/40 flex min-h-0 flex-col border-b border-gray-200 bg-gray-50 md:border-r md:border-b-0">
-                  <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                    <span className="dark:text-dark-300 text-xs font-semibold text-gray-500">
-                      Kurallar ({conditions.length})
-                    </span>
-                  </div>
-                  <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 max-md:max-h-40">
-                    {conditions.map((condition, index) => {
-                      const active = condition.id === selected?.id;
-                      const enabled = condition.enabled !== false;
-                      return (
-                        <li
-                          key={condition.id}
-                          className={clsx(
-                            "flex items-stretch rounded-md border transition-colors",
-                            active
-                              ? "border-primary-500 dark:bg-dark-700 bg-white shadow-sm"
-                              : "dark:hover:bg-dark-700 border-transparent hover:bg-white",
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedId(condition.id)}
-                            aria-current={active}
-                            className={clsx(
-                              "flex min-w-0 flex-1 items-center gap-3 py-2 pl-2.5 text-left",
-                              !enabled && "opacity-50",
-                            )}
-                          >
-                            <span
-                              className="dark:border-dark-450 grid h-7 w-12 shrink-0 place-items-center rounded border border-gray-300 text-xs tabular-nums"
-                              style={formatStyle(condition.format)}
-                            >
-                              123
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="dark:text-dark-300 block text-[11px] text-gray-500">
-                                Kural {index + 1}
-                              </span>
-                              <span className="dark:text-dark-100 line-clamp-2 text-sm break-words text-gray-800">
-                                {describeCondition(condition, measureLabel(condition))}
-                              </span>
-                            </span>
-                            {isIncomplete(condition) ? (
-                              <ExclamationTriangleIcon className="size-4 shrink-0 text-amber-500" title="Değer girilmedi" />
-                            ) : null}
-                          </button>
-                          <div className="flex shrink-0 items-center gap-0.5 py-2 pr-2 pl-1">
-                            <button
-                              type="button"
-                              onClick={() => update(condition.id, { enabled: !enabled })}
-                              aria-pressed={enabled}
-                              aria-label={`Kural ${index + 1} ${enabled ? "etkin, kapatmak için tıklayın" : "kapalı, açmak için tıklayın"}`}
-                              title={enabled ? "Etkin — kapatmak için tıklayın" : "Kapalı — açmak için tıklayın"}
-                              className={clsx(
-                                "grid size-7 place-items-center rounded",
-                                enabled
-                                  ? "text-primary-600 dark:text-primary-400 hover:bg-primary-500/10"
-                                  : "dark:hover:bg-dark-600 text-gray-400 hover:bg-gray-100",
-                              )}
-                            >
-                              {enabled ? <EyeIcon className="size-4.5" /> : <EyeSlashIcon className="size-4.5" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeCondition(condition.id)}
-                              aria-label={`Kural ${index + 1} sil`}
-                              title="Sil"
-                              className="grid size-7 place-items-center rounded text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                            >
-                              <TrashIcon className="size-4.5" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <div className="p-3">
-                    <Button variant="outlined" className="h-9 w-full gap-1.5 text-sm" onClick={addCondition}>
-                      <PlusIcon className="size-4" />
-                      Yeni kural
-                    </Button>
-                  </div>
-                </aside>
-
-                {/* Duzenleyici */}
-                <section className="min-h-0 overflow-y-auto">
-                  {selected ? (
-                    <ConditionEditor
-                      key={selected.id}
-                      condition={selected}
-                      measureOptions={measureOptions}
-                      valueLabel={valueLabel}
-                      onChange={(patch) => update(selected.id, patch)}
-                    />
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-                      <PaintBrushIcon className="size-10 text-gray-300" />
-                      <div>
-                        <p className="dark:text-dark-100 font-medium text-gray-800">Henüz kural yok</p>
-                        <p className="dark:text-dark-300 mt-1 text-sm text-gray-500">
-                          Örneğin 30.000'den büyük toplamları yeşile boyayan bir kural ekleyin.
-                        </p>
-                      </div>
-                      <Button color="primary" className="h-9 gap-1.5 px-4 text-sm" onClick={addCondition}>
-                        <PlusIcon className="size-4" />
-                        İlk kuralı ekle
-                      </Button>
-                    </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[20rem_minmax(0,1fr)]">
+        {/* Kural listesi */}
+        <aside className="dark:border-dark-500 dark:bg-dark-800/40 flex min-h-0 flex-col border-b border-gray-200 bg-gray-50 md:border-r md:border-b-0">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <span className="dark:text-dark-300 text-xs font-semibold text-gray-500">
+              Kurallar ({conditions.length})
+            </span>
+          </div>
+          <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 max-md:max-h-40">
+            {conditions.map((condition, index) => {
+              const active = condition.id === selected?.id;
+              const enabled = condition.enabled !== false;
+              return (
+                <li
+                  key={condition.id}
+                  className={clsx(
+                    "flex items-stretch rounded-md border transition-colors",
+                    active
+                      ? "border-primary-500 dark:bg-dark-700 bg-white shadow-sm"
+                      : "dark:hover:bg-dark-700 border-transparent hover:bg-white",
                   )}
-                </section>
-              </div>
-
-              <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
-                <p className="dark:text-dark-300 mr-auto text-xs text-gray-500">
-                  Kurallar listedeki sırayla uygulanır; aynı hücreye uyan alttaki kural üsttekini ezer.
-                </p>
-                <Button
-                  variant="flat"
-                  className="h-9 px-3 text-sm"
-                  disabled={conditions.length === 0}
-                  onClick={() => onChange([])}
                 >
-                  Tümünü temizle
-                </Button>
-                <Button color="primary" className="h-9 px-5 text-sm" onClick={onClose}>
-                  Tamam
-                </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(condition.id)}
+                    aria-current={active}
+                    className={clsx(
+                      "flex min-w-0 flex-1 items-center gap-3 py-2 pl-2.5 text-left",
+                      !enabled && "opacity-50",
+                    )}
+                  >
+                    <span
+                      className="dark:border-dark-450 grid h-7 w-12 shrink-0 place-items-center rounded border border-gray-300 text-xs tabular-nums"
+                      style={formatStyle(condition.format)}
+                    >
+                      123
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="dark:text-dark-300 block text-[11px] text-gray-500">
+                        Kural {index + 1}
+                      </span>
+                      <span className="dark:text-dark-100 line-clamp-2 text-sm break-words text-gray-800">
+                        {describeCondition(condition, measureLabel(condition))}
+                      </span>
+                    </span>
+                    {isIncomplete(condition) ? (
+                      <ExclamationTriangleIcon className="size-4 shrink-0 text-amber-500" title="Değer girilmedi" />
+                    ) : null}
+                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5 py-2 pr-2 pl-1">
+                    <button
+                      type="button"
+                      onClick={() => update(condition.id, { enabled: !enabled })}
+                      aria-pressed={enabled}
+                      aria-label={`Kural ${index + 1} ${enabled ? "etkin, kapatmak için tıklayın" : "kapalı, açmak için tıklayın"}`}
+                      title={enabled ? "Etkin — kapatmak için tıklayın" : "Kapalı — açmak için tıklayın"}
+                      className={clsx(
+                        "grid size-7 place-items-center rounded",
+                        enabled
+                          ? "text-primary-600 dark:text-primary-400 hover:bg-primary-500/10"
+                          : "dark:hover:bg-dark-600 text-gray-400 hover:bg-gray-100",
+                      )}
+                    >
+                      {enabled ? <EyeIcon className="size-4.5" /> : <EyeSlashIcon className="size-4.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeCondition(condition.id)}
+                      aria-label={`Kural ${index + 1} sil`}
+                      title="Sil"
+                      className="grid size-7 place-items-center rounded text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                    >
+                      <TrashIcon className="size-4.5" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="p-3">
+            <Button variant="outlined" className="h-9 w-full gap-1.5 text-sm" onClick={addCondition}>
+              <PlusIcon className="size-4" />
+              Yeni kural
+            </Button>
+          </div>
+        </aside>
+
+        {/* Duzenleyici */}
+        <section className="min-h-0 overflow-y-auto">
+          {selected ? (
+            <ConditionEditor
+              key={selected.id}
+              condition={selected}
+              measureOptions={measureOptions}
+              valueLabel={valueLabel}
+              onChange={(patch) => update(selected.id, patch)}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+              <PaintBrushIcon className="size-10 text-gray-300" />
+              <div>
+                <p className="dark:text-dark-100 font-medium text-gray-800">Henüz kural yok</p>
+                <p className="dark:text-dark-300 mt-1 text-sm text-gray-500">
+                  Örneğin 30.000'den büyük toplamları yeşile boyayan bir kural ekleyin.
+                </p>
               </div>
-            </DialogPanel>
-          </TransitionChild>
-        </div>
-      </Dialog>
-    </Transition>
+              <Button color="primary" className="h-9 gap-1.5 px-4 text-sm" onClick={addCondition}>
+                <PlusIcon className="size-4" />
+                İlk kuralı ekle
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="dark:border-dark-500 flex flex-wrap items-center gap-2 border-t border-gray-200 px-5 py-3">
+        <p className="dark:text-dark-300 mr-auto text-xs text-gray-500">
+          Kurallar listedeki sırayla uygulanır; aynı hücreye uyan alttaki kural üsttekini ezer.
+        </p>
+        <Button
+          variant="flat"
+          className="h-9 px-3 text-sm"
+          disabled={conditions.length === 0}
+          onClick={() => onChange([])}
+        >
+          Tümünü temizle
+        </Button>
+        <Button color="primary" className="h-9 px-5 text-sm" onClick={onClose}>
+          Tamam
+        </Button>
+      </div>
+    </>
   );
 }
 

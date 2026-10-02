@@ -326,8 +326,8 @@ export type DataTableProps<T> = {
    */
   enablePivotDataImport?: boolean;
   /**
-   * Pivot arac cubugu dugmelerinin baslangic gorunurlugu, ornegin `{ configuration: false }`.
-   * Kullanici Tablo Gorunumu menusunden degistirebilir. Verilmeyen dugmeler gorunur.
+   * Pivot Ayarlari penceresindeki sekmelerin baslangic gorunurlugu, ornegin `{ configuration: false }`.
+   * Kullanici Tablo Gorunumu menusunden degistirebilir. Verilmeyen sekmeler gorunur.
    */
   defaultPivotToolbar?: DataTablePivotToolbar;
   /** "Veri" dugmesiyle yeni veri yuklendiginde cagrilir. */

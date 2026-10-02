@@ -17,6 +17,7 @@ import {
   ExclamationTriangleIcon,
   MinusIcon,
   PlusIcon,
+  TableCellsIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
@@ -44,16 +45,25 @@ import {
   type PivotValueMappers,
 } from "./pivotEngine";
 import { exportPivotToExcel, exportRecordsToExcel } from "./exportPivot";
-import { PIVOT_AGGREGATE_LABELS, PivotFieldChooser, usePivotAreas } from "./PivotFieldChooser";
+import { PIVOT_AGGREGATE_LABELS, PivotFieldChooserPanel, usePivotAreas } from "./PivotFieldChooser";
 import { PivotFieldPanel, PivotZoneContent, pivotZoneProps } from "./PivotFieldPanel";
-import { PivotConditionsButton } from "./PivotConditionsDialog";
-import { PivotDataButton } from "./PivotDataDialog";
-import { PivotConfigButton } from "./PivotConfigDialog";
+import { PivotConditionsPanel } from "./PivotConditionsDialog";
+import { PivotDataPanel } from "./PivotDataDialog";
+import { PivotConfigPanel } from "./PivotConfigDialog";
+import {
+  PIVOT_SETTINGS_TABS,
+  PivotSettingsDialog,
+  TabCount,
+  TabDot,
+  type PivotSettingsSection,
+  type PivotSettingsTab,
+} from "./PivotSettingsDialog";
 import { validatePivotConfig } from "./pivotValidation";
 import { resolvePivotCellStyle } from "./pivotConditions";
-import { PivotNumberFormatButton } from "./PivotNumberFormatDialog";
-import { PivotCellStylesButton } from "./PivotCellStylesDialog";
+import { PivotNumberFormatPanel } from "./PivotNumberFormatDialog";
+import { PivotCellStylesPanel } from "./PivotCellStylesDialog";
 import {
+  hasPivotCellStyles,
   pivotAlternateColumns,
   pivotCellColor,
   pivotCellKind,
@@ -62,6 +72,7 @@ import {
 } from "./pivotCellStyles";
 import {
   createPivotValueFormatter,
+  hasPivotNumberFormat,
   pivotNumberAlignStyle,
   resolvePivotNumberFormat,
 } from "./pivotNumberFormat";
@@ -77,14 +88,9 @@ export type PivotViewSettings = {
   toolbar: Record<DataTablePivotToolbarButton, boolean>;
 };
 
-const TOOLBAR_SWITCHES: { key: DataTablePivotToolbarButton; label: string }[] = [
-  { key: "data", label: "Veri" },
-  { key: "configuration", label: "Yapılandırma" },
-  { key: "fieldChooser", label: "Pivot (Alan Seçici)" },
-  { key: "cellStyles", label: "Hücre Renkleri" },
-  { key: "numberFormat", label: "Sayı Biçimi" },
-  { key: "conditions", label: "Koşullu Biçimlendirme" },
-];
+/** Tablo Gorunumu'ndeki sekme anahtarlari, Pivot Ayarlari'ndaki sekme sirasiyla. */
+const TOOLBAR_SWITCHES: { key: DataTablePivotToolbarButton; label: string }[] =
+  PIVOT_SETTINGS_TABS.map((item) => ({ key: item.id, label: item.label }));
 
 export type PivotGridProps = {
   data: readonly Record<string, any>[];
@@ -174,7 +180,14 @@ export function PivotGrid({
   }, [config, fields, model, modelError]);
   const errors = issues.filter((issue) => issue.level === "error");
 
-  const [chooserOpen, setChooserOpen] = useState(false);
+  // Tum pivot ayarlari tek pencerede, sekmelerde
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<PivotSettingsTab>("fieldChooser");
+  const openSettings = (tab?: PivotSettingsTab) => {
+    if (tab) setSettingsTab(tab);
+    setSettingsOpen(true);
+  };
+  const closeSettings = () => setSettingsOpen(false);
 
   // Sayi bicimi: varsayilan bicim + veri alanina ozel bicim
   const valueFormatters = useMemo(
@@ -260,6 +273,7 @@ export function PivotGrid({
   const rowHeaderWidth = view.rowDense ? DENSE_ROW_HEADER_WIDTH : ROW_HEADER_WIDTH;
   const tableRef = useRef<HTMLTableElement>(null);
   const rowHeaderOffsets = useRowHeaderOffsets(tableRef, [layout, view.rowDense, view.fieldPanel]);
+  const headerRowTops = useHeaderRowTops(tableRef, [layout, view.rowDense, view.fieldPanel]);
   // Satir basligi sutunlari icerige gore genisleyebilir; yapisik sol konumlar olculen genisliklerden gelir.
   const leftOf = (level: number) => rowHeaderOffsets?.[level] ?? level * rowHeaderWidth;
   const headerRowHeight = panelInGrid
@@ -271,6 +285,125 @@ export function PivotGrid({
   const canRenderGrid = hasValues && hasData;
   const rowChips = panelInGrid ? areas.renderChips("rows") : [];
   const expandableCount = collectExpandablePaths(model.rowRoot).length + collectExpandablePaths(model.columnRoot).length;
+
+  const activeConditionCount = (config.conditions ?? []).filter((condition) => condition.enabled !== false).length;
+  const hasCellStyles = hasPivotCellStyles(config.cellStyles) || config.values.some((value) => hasPivotCellStyles(value.cellStyles));
+  const hasNumberFormat = hasPivotNumberFormat(config.numberFormat) || config.values.some((value) => hasPivotNumberFormat(value.numberFormat));
+
+  // Tablo Gorunumu'nde kapatilan sekmeler pencerede gosterilmez
+  const settingsSections: PivotSettingsSection[] = [
+    {
+      id: "fieldChooser" as const,
+      badge: <TabCount count={errors.length} tone="danger" />,
+      content: (
+        <PivotFieldChooserPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          config={config}
+          fields={fields}
+          data={data}
+          valueMappers={valueMappers}
+          dateFields={dateFields}
+          onChange={onConfigChange}
+          issues={issues}
+        />
+      ),
+    },
+    ...(onDataImport
+      ? [{
+        id: "data" as const,
+        content: (
+          <PivotDataPanel
+            open={settingsOpen}
+            onClose={closeSettings}
+            currentData={data}
+            onApply={(rows) => {
+              onDataImport(rows);
+              notify("success", `${rows.length.toLocaleString("tr-TR")} kayıt yüklendi; alanları seçin`, onNotify);
+              // Pencere acik kalir; alanlar secilsin diye Alan Secici sekmesine gecilir
+              setSettingsTab("fieldChooser");
+            }}
+          />
+        ),
+      }]
+      : []),
+    {
+      id: "cellStyles" as const,
+      badge: hasCellStyles ? <TabDot /> : null,
+      content: (
+        <PivotCellStylesPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          cellStyles={config.cellStyles}
+          values={config.values}
+          valueLabel={valueLabel}
+          onApply={(cellStyles, perValue) =>
+            onConfigChange({
+              ...config,
+              cellStyles,
+              values: config.values.map((value, index) => ({ ...value, cellStyles: perValue[index] })),
+            })}
+        />
+      ),
+    },
+    {
+      id: "numberFormat" as const,
+      badge: hasNumberFormat ? <TabDot /> : null,
+      content: (
+        <PivotNumberFormatPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          numberFormat={config.numberFormat}
+          values={config.values}
+          valueLabel={valueLabel}
+          onApply={(numberFormat, perValue) =>
+            onConfigChange({
+              ...config,
+              numberFormat,
+              values: config.values.map((value, index) => ({ ...value, numberFormat: perValue[index] })),
+            })}
+        />
+      ),
+    },
+    {
+      id: "conditions" as const,
+      badge: <TabCount count={activeConditionCount} />,
+      content: (
+        <PivotConditionsPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          conditions={config.conditions ?? []}
+          values={config.values}
+          valueLabel={valueLabel}
+          onChange={(conditions) => onConfigChange({ ...config, conditions })}
+        />
+      ),
+    },
+    {
+      id: "configuration" as const,
+      content: (
+        <PivotConfigPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          config={config}
+          fields={fields}
+          onNotify={(type, message) => notify(type, message, onNotify)}
+          onApply={(shareable) =>
+            onConfigChange({
+              ...config,
+              ...shareable,
+              // JSON'da olmayan toplam secenekleri varsayilana (acik) doner
+              showRowTotals: shareable.showRowTotals,
+              showColumnTotals: shareable.showColumnTotals,
+              showRowGrandTotals: shareable.showRowGrandTotals,
+              showColumnGrandTotals: shareable.showColumnGrandTotals,
+              expandedRows: [],
+              expandedColumns: [],
+            })}
+        />
+      ),
+    },
+  ].filter((section) => view.toolbar[section.id]);
 
   return (
     <div
@@ -314,73 +447,21 @@ export function PivotGrid({
             {enableExport ? (
               <PivotExportMenu disabled={!hasData || !hasValues} onExport={handleExport} />
             ) : null}
-            {view.toolbar.cellStyles ? <PivotCellStylesButton
-              cellStyles={config.cellStyles}
-              values={config.values}
-              valueLabel={valueLabel}
-              onApply={(cellStyles, perValue) =>
-                onConfigChange({
-                  ...config,
-                  cellStyles,
-                  values: config.values.map((value, index) => ({ ...value, cellStyles: perValue[index] })),
-                })}
-            /> : null}
-            {view.toolbar.numberFormat ? <PivotNumberFormatButton
-              numberFormat={config.numberFormat}
-              values={config.values}
-              valueLabel={valueLabel}
-              onApply={(numberFormat, perValue) =>
-                onConfigChange({
-                  ...config,
-                  numberFormat,
-                  values: config.values.map((value, index) => ({ ...value, numberFormat: perValue[index] })),
-                })}
-            /> : null}
-            {view.toolbar.conditions ? <PivotConditionsButton
-              conditions={config.conditions ?? []}
-              values={config.values}
-              valueLabel={valueLabel}
-              onChange={(conditions) => onConfigChange({ ...config, conditions })}
-            /> : null}
-            {onDataImport && view.toolbar.data ? (
-              <PivotDataButton
-                onApply={(rows) => {
-                  onDataImport(rows);
-                  notify("success", `${rows.length.toLocaleString("tr-TR")} kayıt yüklendi; alanları seçin`, onNotify);
-                  setChooserOpen(true);
-                }}
-              />
-            ) : null}
-            {view.toolbar.configuration ? <PivotConfigButton
-              config={config}
-              fields={fields}
-              onNotify={(type, message) => notify(type, message, onNotify)}
-              onApply={(shareable) =>
-                onConfigChange({
-                  ...config,
-                  ...shareable,
-                  // JSON'da olmayan toplam secenekleri varsayilana (acik) doner
-                  showRowTotals: shareable.showRowTotals,
-                  showColumnTotals: shareable.showColumnTotals,
-                  showRowGrandTotals: shareable.showRowGrandTotals,
-                  showColumnGrandTotals: shareable.showColumnGrandTotals,
-                  expandedRows: [],
-                  expandedColumns: [],
-                })}
-            /> : null}
-            {enableFieldChooser ? (
-              <PivotFieldChooser
-                config={config}
-                fields={fields}
-                data={data}
-                valueMappers={valueMappers}
-                dateFields={dateFields}
-                onChange={onConfigChange}
-                issues={issues}
-                open={chooserOpen}
-                onOpenChange={setChooserOpen}
-                hideButton={!view.toolbar.fieldChooser}
-              />
+            {enableFieldChooser && settingsSections.length > 0 ? (
+              <Button
+                variant="flat"
+                className="relative h-8 gap-1.5 rounded-full px-3 text-sm"
+                title={errors.length > 0 ? `Pivot ayarları — ${errors.length} hata` : "Pivot ayarları"}
+                onClick={() => openSettings()}
+              >
+                <TableCellsIcon className="size-5" />
+                <span>Pivot</span>
+                {errors.length > 0 ? (
+                  <span className="absolute -top-0.5 -right-0.5 grid size-4 place-items-center rounded-full bg-red-600 text-[10px] font-semibold text-white">
+                    !
+                  </span>
+                ) : null}
+              </Button>
             ) : null}
             {toolbarExtra}
             <PivotViewMenu
@@ -393,6 +474,14 @@ export function PivotGrid({
             />
           </div>
         </div>
+
+        <PivotSettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          tab={settingsTab}
+          onTabChange={setSettingsTab}
+          sections={settingsSections}
+        />
 
         {errors.length > 0 ? (
           <div
@@ -408,7 +497,7 @@ export function PivotGrid({
             {enableFieldChooser ? (
               <button
                 type="button"
-                onClick={() => setChooserOpen(true)}
+                onClick={() => openSettings("fieldChooser")}
                 className="shrink-0 rounded px-2 py-0.5 text-xs font-medium underline-offset-2 hover:underline"
               >
                 Alan seçiciyi aç
@@ -472,7 +561,9 @@ export function PivotGrid({
                 ) : null}
                 {layout.columnHeaderRows.map((headerRow, rowIndex) => {
                   const isLast = rowIndex === layout.columnHeaderRows.length - 1;
-                  const top = zoneRowHeight + rowIndex * headerRowHeight;
+                  // Gercek satir konumu; olculemezse sabit yukseklikle tahmin
+                  const top = headerRowTops?.[rowIndex + (panelInGrid ? 1 : 0)]
+                    ?? zoneRowHeight + rowIndex * headerRowHeight;
                   return (
                     <tr key={rowIndex}>
                       {rowIndex === 0 && layout.columnHeaderRows.length > 1 ? (
@@ -597,6 +688,41 @@ function useRowHeaderOffsets(
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 
   return offsets;
+}
+
+/**
+ * Baslik satirlarinin (thead > tr) tablonun ustune gore gercek konumlari. Satir yukseklikleri
+ * icerige gore buyuyebildigi icin yapisik `top` degerleri sabit yukseklikle hesaplanmaz.
+ * Yapisik olan hucreler (th) oldugundan satirlarin offsetTop'u kaydirmadan etkilenmez.
+ */
+function useHeaderRowTops(tableRef: RefObject<HTMLTableElement | null>, deps: unknown[]): number[] | null {
+  const [tops, setTops] = useState<number[] | null>(null);
+
+  useLayoutEffect(() => {
+    const table = tableRef.current;
+    if (!table) {
+      setTops(null);
+      return;
+    }
+    const measure = () => {
+      const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>(":scope > thead > tr"));
+      if (rows.length === 0) return;
+      const base = rows[0].offsetTop;
+      const next = rows.map((row) => row.offsetTop - base);
+      setTops((previous) =>
+        previous
+        && previous.length === next.length
+        && previous.every((value, index) => Math.abs(value - next[index]) < 0.5)
+          ? previous
+          : next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    table.querySelectorAll(":scope > thead > tr").forEach((row) => observer.observe(row));
+    return () => observer.disconnect();
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return tops;
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -824,7 +950,7 @@ function PivotViewMenu({
             />
           ))}
           <div className="flex w-full items-center gap-2 pt-1">
-            <p className="shrink-0 text-xs">Araç çubuğu</p>
+            <p className="shrink-0 text-xs">Pivot sekmeleri</p>
             <hr className="dark:border-dark-500 flex-1 border-gray-300" />
           </div>
           {availableButtons.map((item) => (

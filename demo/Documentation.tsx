@@ -481,10 +481,16 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
         <h3>Arayüz</h3>
         <ul className="docs-list">
           <li>
-            <strong>Alan Seçici (Pivot düğmesi).</strong> Tüm alanlar, filtre, satır,
-            sütun ve veri alanları arasında sürükle-bırak. Huni simgesiyle değer filtresi,
-            Σ simgesiyle özet türü (Toplam, Ortalama, Adet, En küçük, En büyük). Pencere
-            büyütülüp köşesinden boyutlandırılabilir.
+            <strong>Pivot Ayarları (Pivot düğmesi).</strong> Tüm pivot ayarları tek pencerede,
+            sekmelerde toplanır: Alan Seçici, Koşullu Biçimlendirme, Sayı Biçimi, Hücre
+            Renkleri, Yapılandırma ve Veri. Pencere büyütülüp köşesinden boyutlandırılabilir;
+            sekmeler arasında geçince "Uygula" bekleyen taslaklar korunur. Sekme başlıklarında
+            hata sayısı, kural sayısı ve ayar tanımlı göstergeleri vardır.
+          </li>
+          <li>
+            <strong>Alan Seçici sekmesi.</strong> Tüm alanlar, filtre, satır, sütun ve veri
+            alanları arasında sürükle-bırak. Huni simgesiyle değer filtresi, Σ simgesiyle özet
+            türü (Toplam, Ortalama, Adet, En küçük, En büyük).
           </li>
           <li>
             <strong>Alan paneli.</strong> Tablo Görünümü menüsünden açılır; filtre alanları
@@ -499,11 +505,10 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
           </li>
           <li>
             <strong>Tablo Görünümü.</strong> Tam ekran, sıkıştır, başlık, alan paneli, dört
-            toplam anahtarı ve <em>Araç çubuğu</em> bölümü: Veri, Yapılandırma, Pivot, Hücre
-            Renkleri, Sayı Biçimi ve Koşullu Biçimlendirme düğmeleri tek tek gizlenip gösterilir
-            (başlangıç değeri <code className="docs-code-inline">defaultPivotToolbar</code>). Pivot
-            düğmesi gizliyken de Alan Seçici veri yüklendikten sonra açılır. Araç çubuğunda
-            ayrıca Tümünü genişlet / daralt vardır.
+            toplam anahtarı ve <em>Pivot sekmeleri</em> bölümü: Pivot Ayarları penceresindeki
+            sekmeler tek tek gizlenip gösterilir (başlangıç değeri{" "}
+            <code className="docs-code-inline">defaultPivotToolbar</code>). Araç çubuğunda ayrıca
+            Tümünü genişlet / daralt ve İndir vardır.
           </li>
           <li>
             <strong>İndir.</strong> Pivot tablosu birleşik hücrelerle ya da filtrelenmiş
@@ -578,8 +583,10 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
         <h3>Veri yükleme</h3>
         <p>
           <code className="docs-code-inline">enablePivotDataImport</code> araç çubuğuna{" "}
-          <strong>Veri</strong> düğmesini ekler. Kullanıcı JSON listesini yapıştırır ya da
-          dosya seçer; <code className="docs-code-inline">{`[ {...}, {...} ]`}</code> veya{" "}
+          <strong>Veri</strong> düğmesini ekler. Pencere açılınca tablodaki mevcut veri JSON
+          olarak görünür; kullanıcı onu düzenleyebilir, temizleyip yeni bir JSON listesi
+          yapıştırabilir ya da dosya seçebilir. Mevcut veri değiştirilmeden "Uygula" pasiftir.{" "}
+          <code className="docs-code-inline">{`[ {...}, {...} ]`}</code> veya{" "}
           <code className="docs-code-inline">{`{ "data": [ ... ] }`}</code> kabul edilir. Hatalı
           JSON satır ve sütunuyla gösterilir. Uygulanınca pivot ayarı sıfırlanır, Alan Seçici
           açılır ve <code className="docs-code-inline">onPivotDataImport(rows)</code> çağrılır.
@@ -1082,11 +1089,11 @@ const PIVOT_CONFIG_ROWS: PropRow[] = [
 const PIVOT_PROPS: PropRow[] = [
   { name: "pivot", type: "DataTablePivotConfig<T>", def: "—", desc: "Verilirse tablo pivot ızgarası olarak çizilir." },
   { name: "onPivotChange", type: "(pivot) => void", def: "—", desc: "Alan seçici, panel, +/−, kural veya yapılandırma değişince çağrılır." },
-  { name: "enablePivotPanel", type: "boolean", def: "true", desc: "Araç çubuğundaki Pivot (Alan Seçici) düğmesi." },
+  { name: "enablePivotPanel", type: "boolean", def: "true", desc: "Araç çubuğundaki Pivot düğmesi (Pivot Ayarları penceresi)." },
   { name: "defaultPivotFieldPanel", type: "boolean", def: "false", desc: "Alan paneli başlangıçta açık mı." },
-  { name: "enablePivotDataImport", type: "boolean", def: "false", desc: "Araç çubuğunda JSON veri yükleme (Veri) düğmesi." },
+  { name: "enablePivotDataImport", type: "boolean", def: "false", desc: "Pivot Ayarları'nda Veri sekmesi (mevcut veriyi görme ve JSON yükleme)." },
   { name: "onPivotDataImport", type: "(rows) => void", def: "—", desc: "Veri düğmesiyle yeni liste yüklenince çağrılır." },
-  { name: "defaultPivotToolbar", type: "DataTablePivotToolbar", def: "hepsi görünür", desc: "Araç çubuğu düğmelerinin başlangıç görünürlüğü: data, configuration, fieldChooser, cellStyles, numberFormat, conditions." },
+  { name: "defaultPivotToolbar", type: "DataTablePivotToolbar", def: "hepsi görünür", desc: "Pivot Ayarları sekmelerinin başlangıç görünürlüğü: data, configuration, fieldChooser, cellStyles, numberFormat, conditions." },
 ];
 
 const HELPER_PROPS: PropRow[] = [
