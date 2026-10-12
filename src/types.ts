@@ -10,7 +10,7 @@ import type {
   RowSelectionState,
   SortingState,
 } from "@tanstack/react-table";
-import type { ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
 import type { NotifyFn } from "./utils/notify";
 
@@ -427,6 +427,15 @@ export type DataTableProps<T> = {
   isTransferSelectedDisabled?: boolean;
   /** Secim barinda sil/aktar disinda ozel aksiyonlar. Serbest icerik icin ReactNode da verilebilir. */
   selectionActions?: ReactNode | SelectionAction[];
+  /**
+   * Veri satirina cift tiklaninca cagrilir (grup ve toplam satirlarinda calismaz).
+   * Satirdaki dugme, link, input gibi etkilesimli ogelerden gelen cift tiklamalar yok sayilir.
+   */
+  onRowDoubleClick?: (row: T, event: ReactMouseEvent<HTMLTableRowElement>) => void;
+  /** Veri satirinin `<tr>` sinifi. Fonksiyon verilirse satir verisi ve kaynak dizideki sirasi ile cagrilir. */
+  rowClassName?: string | ((row: T, index: number) => string | undefined);
+  /** Veri satirinin `<tr>` stili. Fonksiyon verilirse satir verisi ve kaynak dizideki sirasi ile cagrilir. */
+  rowStyle?: CSSProperties | ((row: T, index: number) => CSSProperties | undefined);
   onNotify?: NotifyFn;
   toolbarExtra?: ReactNode;
 };

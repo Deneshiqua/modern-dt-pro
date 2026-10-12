@@ -6,13 +6,19 @@ import {
   SAMPLE_SQL,
   VALUE_MAPPERS,
   createDemoRows,
+  type DemoRow,
 } from "./data";
 
 type PlaygroundProps = {
   onNotify: (type: NotifyType, message: string) => void;
 };
 
-function buildPlaygroundCode(options: { title: string; sql: boolean }) {
+// "Satir stili" acikken: taslak kayitlar soluk, toplami 2000 ve ustu olanlar vurgulu
+const playgroundRowClassName = (row: DemoRow) => (row.status === 0 ? "pg-row-muted" : undefined);
+const playgroundRowStyle = (row: DemoRow) =>
+  row.total >= 2000 ? { backgroundColor: "rgba(245, 158, 11, 0.16)" } : undefined;
+
+function buildPlaygroundCode(options: { title: string; sql: boolean; doubleClick: boolean; rowStyling: boolean }) {
   const lines = [
     'import { DataTable } from "modern-dt-pro";',
     "",
@@ -37,6 +43,16 @@ function buildPlaygroundCode(options: { title: string; sql: boolean }) {
   ];
 
   if (options.sql) lines.push("  sqlQuery={SAMPLE_SQL}");
+  if (options.doubleClick) {
+    lines.push("  onRowDoubleClick={(row) => onNotify(\"success\", `${row.code} · ${row.name}`)}");
+  }
+  if (options.rowStyling) {
+    lines.push(
+      '  rowClassName={(row) => (row.status === 0 ? "pg-row-muted" : undefined)}',
+      "  rowStyle={(row) =>",
+      '    row.total >= 2000 ? { backgroundColor: "rgba(245, 158, 11, 0.16)" } : undefined}',
+    );
+  }
   lines.push("/>");
 
   return lines.join("\n");
@@ -66,9 +82,11 @@ export function Playground({ onNotify }: PlaygroundProps) {
   const [copied, setCopied] = useState(false);
   const [title, setTitle] = useState("Playground");
   const [sql, setSql] = useState(false);
+  const [doubleClick, setDoubleClick] = useState(false);
+  const [rowStyling, setRowStyling] = useState(false);
   const [selectedCount, setSelectedCount] = useState(0);
 
-  const code = buildPlaygroundCode({ title, sql });
+  const code = buildPlaygroundCode({ title, sql, doubleClick, rowStyling });
 
   const copyCode = async () => {
     try {
@@ -103,6 +121,12 @@ export function Playground({ onNotify }: PlaygroundProps) {
           <Chip active={sql} onClick={() => setSql((value) => !value)}>
             SQL
           </Chip>
+          <Chip active={doubleClick} onClick={() => setDoubleClick((value) => !value)}>
+            Çift tıklama
+          </Chip>
+          <Chip active={rowStyling} onClick={() => setRowStyling((value) => !value)}>
+            Satır stili
+          </Chip>
           <label className="pg-chip">
             <span>Başlık</span>
             <input
@@ -134,6 +158,9 @@ export function Playground({ onNotify }: PlaygroundProps) {
               columnLabels={COLUMN_LABELS}
               valueMappers={VALUE_MAPPERS}
               sqlQuery={sql ? SAMPLE_SQL : undefined}
+              onRowDoubleClick={doubleClick ? (row) => onNotify("success", `${row.code} · ${row.name}`) : undefined}
+              rowClassName={rowStyling ? playgroundRowClassName : undefined}
+              rowStyle={rowStyling ? playgroundRowStyle : undefined}
               onNotify={onNotify}
               onSelectionChange={(selected) => setSelectedCount(selected.length)}
               enableSorting={false}

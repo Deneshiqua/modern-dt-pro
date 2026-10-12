@@ -1065,6 +1065,9 @@ const PAGINATION_PROPS: PropRow[] = [
 ];
 
 const MISC_PROPS: PropRow[] = [
+  { name: "onRowDoubleClick", type: "(row: T, event) => void", def: "—", desc: "Veri satırına çift tıklanınca. Grup/toplam satırlarında ve buton, link, checkbox gibi öğelerde çalışmaz." },
+  { name: "rowClassName", type: "string | (row: T, index) => string | undefined", def: "—", desc: "Veri satırının <tr> sınıfı. Fonksiyonla satıra göre koşullu sınıf." },
+  { name: "rowStyle", type: "CSSProperties | (row: T, index) => CSSProperties | undefined", def: "—", desc: "Veri satırının <tr> stili. Fonksiyonla satıra göre koşullu stil." },
   { name: "sqlQuery", type: "string", def: "—", desc: "Toolbar'da SQL gösterimi ve kopyalama." },
   { name: "onNotify", type: "NotifyFn", def: "—", desc: "(type, message) => void. Yoksa setDataTableNotify veya console." },
 ];

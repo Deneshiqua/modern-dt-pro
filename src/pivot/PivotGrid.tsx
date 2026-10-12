@@ -282,7 +282,8 @@ export function PivotGrid({
   const zoneRowHeight = panelInGrid ? headerRowHeight : 0;
   const hasValues = config.values.length > 0;
   const hasData = model.recordCount > 0;
-  const canRenderGrid = hasValues && hasData;
+  // Alan paneli tablodayken veri bossa da baslik cizilir; filtre sonucu bosalinca duzen degismez
+  const canRenderGrid = hasValues && (hasData || panelInGrid);
   const rowChips = panelInGrid ? areas.renderChips("rows") : [];
   const expandableCount = collectExpandablePaths(model.rowRoot).length + collectExpandablePaths(model.columnRoot).length;
 
@@ -507,8 +508,12 @@ export function PivotGrid({
         ) : null}
 
         {view.fieldPanel ? (
-          // Izgara cizilebiliyorsa satir/sutun/veri alanlari tablonun baslik bolgesinde durur
-          <PivotFieldPanel areas={areas} only={canRenderGrid ? ["filters"] : undefined} />
+          // Izgara cizilebiliyorsa satir/sutun alanlari tablonun baslik bolgesinde, veri alanlari filtrelerin altinda durur
+          <PivotFieldPanel
+            areas={areas}
+            only={canRenderGrid ? ["filters", "values"] : undefined}
+            stacked={canRenderGrid}
+          />
         ) : null}
 
         <div
@@ -519,7 +524,7 @@ export function PivotGrid({
             <EmptyState>Pivot için Veri alanlarına en az bir alan ekleyin.</EmptyState>
           ) : !hasValues ? (
             <EmptyState>Veri alanlarına en az bir alan sürükleyin.</EmptyState>
-          ) : !hasData ? (
+          ) : !canRenderGrid ? (
             <EmptyState>{emptyMessage}</EmptyState>
           ) : (
             <table
@@ -539,13 +544,10 @@ export function PivotGrid({
                 {panelInGrid ? (
                   <tr>
                     <th
-                      {...pivotZoneProps(areas, "values")}
-                      className="dtp-pivot-corner dtp-pivot-zone-cell"
+                      className="dtp-pivot-corner"
                       colSpan={layout.rowHeaderDepth}
                       style={{ top: 0, left: 0, height: zoneRowHeight }}
-                    >
-                      <PivotZoneContent areas={areas} area="values" fill />
-                    </th>
+                    />
                     <th
                       {...pivotZoneProps(areas, "columns")}
                       className="dtp-pivot-zone-cell dtp-pivot-zone-cell-columns"
@@ -625,7 +627,13 @@ export function PivotGrid({
                 })}
               </thead>
               <tbody>
-                {layout.rowLines.map((line) => (
+                {!hasData ? (
+                  <tr>
+                    <td colSpan={layout.rowHeaderDepth + Math.max(layout.leafColumns.length, 1)}>
+                      <EmptyState>{emptyMessage}</EmptyState>
+                    </td>
+                  </tr>
+                ) : layout.rowLines.map((line) => (
                   <PivotBodyRow
                     key={line.id}
                     line={line}

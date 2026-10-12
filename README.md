@@ -485,6 +485,8 @@ Alternatively, provide an `onNotify` callback to an individual table.
 - `initialPageSize` / `pageSizeOptions`: pagination defaults
 - `itemLabel`: record label used in selection and pagination summaries
 - `toolbarExtra`: renders custom toolbar content
+- `onRowDoubleClick`: called with the row data when a data row is double-clicked (ignored on group/total rows and on buttons, links and checkboxes)
+- `rowClassName` / `rowStyle`: class or inline style for data rows; pass a function `(row, index) => ...` for per-row values
 - `pivot` / `onPivotChange`: pivot grid mode (see [Pivot grid](#pivot-grid))
 
 See [`DataTableProps`](https://github.com/deneshiqua/modern-dt-pro/blob/main/src/types.ts) for the complete typed API.

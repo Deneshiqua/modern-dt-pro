@@ -55,4 +55,32 @@ describe("movePivotField", () => {
     const next = movePivotField(base, { field: "date", from: "all", index: -1 }, "columns", 0, fields);
     expect(next.columns).toEqual(["date::year", "date::month", "date::day", "year"]);
   });
+
+  it("veri alaninda verilen ad alan baska alana tasininca korunur", () => {
+    const renamed = { ...base, values: [{ field: "amount", aggregate: "sum" as const, label: "Ciro" }] };
+    const moved = movePivotField(renamed, { field: "amount", from: "values", index: 0 }, "filters", undefined, fields);
+    expect(moved.fieldLabels).toEqual({ amount: "Ciro" });
+    const back = movePivotField(moved, { field: "amount", from: "filters", index: 0 }, "values", undefined, fields);
+    expect(back.values).toEqual([{ field: "amount", aggregate: "sum", label: "Ciro" }]);
+  });
+
+  it("veri adi tasininca mevcut alan adinin yerine gecer", () => {
+    const renamed = {
+      ...base,
+      fieldLabels: { amount: "amount" },
+      values: [{ field: "amount", aggregate: "sum" as const, label: "Ciro" }],
+    };
+    const moved = movePivotField(renamed, { field: "amount", from: "values", index: 0 }, "rows", undefined, fields);
+    expect(moved.fieldLabels).toEqual({ amount: "Ciro" });
+  });
+
+  it("veri alani kaldirilinca alan adi degismez", () => {
+    const renamed = {
+      ...base,
+      fieldLabels: { amount: "Tutar TL" },
+      values: [{ field: "amount", aggregate: "sum" as const, label: "Ciro" }],
+    };
+    const removed = movePivotField(renamed, { field: "amount", from: "values", index: 0 }, "all", undefined, fields);
+    expect(removed.fieldLabels).toEqual({ amount: "Tutar TL" });
+  });
 });

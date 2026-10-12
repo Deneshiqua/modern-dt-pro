@@ -114,6 +114,8 @@ const EMPTY_DATA: never[] = [];
 const DEFAULT_ROW_HEIGHT = 48;
 const DENSE_ROW_HEIGHT = 40;
 const VIRTUAL_OVERSCAN = 10;
+// Bu ogelerden gelen cift tiklamalar satir cift tiklamasi sayilmaz (secim kutusu, menuler, linkler)
+const ROW_INTERACTIVE_SELECTOR = "button, a, input, select, textarea, label, [role='button'], [role='menuitem']";
 
 const isAbortError = (error: unknown): boolean =>
     error instanceof Error && error.name === "AbortError";
@@ -182,6 +184,9 @@ function DataTableInner<T extends Record<string, any>>({
     transferSelectedPopoverDescription,
     isTransferSelectedDisabled = false,
     selectionActions,
+    onRowDoubleClick,
+    rowClassName,
+    rowStyle,
     onNotify,
     toolbarExtra,
 }: DataTableProps<T>, ref: ForwardedRef<DataTableHandle>) {
@@ -2225,11 +2230,25 @@ function DataTableInner<T extends Record<string, any>>({
                                             );
                                         }
 
+                                        const customRowStyle = typeof rowStyle === "function"
+                                            ? rowStyle(row.original, row.index)
+                                            : rowStyle;
                                         return (
                                             <Tr
                                                 key={row.id}
-                                                className="dark:border-b-dark-500 border-y border-transparent border-b-gray-200 last:border-none"
-                                                style={virtualRowStyle}
+                                                className={clsx(
+                                                    "dark:border-b-dark-500 border-y border-transparent border-b-gray-200 last:border-none",
+                                                    typeof rowClassName === "function"
+                                                        ? rowClassName(row.original, row.index)
+                                                        : rowClassName,
+                                                )}
+                                                style={customRowStyle ? { ...customRowStyle, ...virtualRowStyle } : virtualRowStyle}
+                                                onDoubleClick={onRowDoubleClick
+                                                    ? (event) => {
+                                                        if ((event.target as HTMLElement).closest(ROW_INTERACTIVE_SELECTOR)) return;
+                                                        onRowDoubleClick(row.original, event);
+                                                    }
+                                                    : undefined}
                                             >
                                                 {reorderPinnedColumns(
                                                     row.getVisibleCells(),

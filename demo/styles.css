@@ -734,3 +734,8 @@ html[data-page-theme="dark"] .docs-code-inline {
 .pv-inline-select option {
   color: #1a1a2e;
 }
+
+/* Playground "Satir stili": taslak kayitlar soluk */
+.pg-row-muted {
+  opacity: 0.5;
+}

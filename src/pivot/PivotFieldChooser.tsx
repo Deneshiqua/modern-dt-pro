@@ -116,11 +116,20 @@ export function movePivotField(
     lists[item.from] = lists[item.from].filter((field) => field !== item.field);
   }
 
+  // Veri alaninda verilen ad alanla birlikte tasinir: baska alana gecince alan adi olur, iceri girince veri adi.
+  // Cip kaldirilinca (target "all") alan adina dokunulmaz.
+  let fieldLabels = config.fieldLabels;
+  if (moved?.label && target !== "values" && target !== "all") {
+    fieldLabels = { ...fieldLabels, [item.field]: moved.label };
+  }
+
   if (target === "values") {
     const isNumeric = fields.find((field) => field.id === item.field)?.isNumeric ?? false;
+    const fieldLabel = config.fieldLabels?.[item.field];
     const entry: DataTablePivotValue = moved ?? {
       field: item.field,
       aggregate: isNumeric ? "sum" : "count",
+      ...(fieldLabel ? { label: fieldLabel } : {}),
     };
     if (item.from === "values" && insertAt !== undefined && item.index < insertAt) insertAt -= 1;
     values.splice(insertAt ?? values.length, 0, entry);
@@ -138,6 +147,7 @@ export function movePivotField(
     filters: lists.filters,
     values,
     filterValues,
+    ...(fieldLabels ? { fieldLabels } : {}),
   };
 }
 
@@ -401,7 +411,8 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
     },
   });
 
-  const renderChips = (area: Exclude<Area, "all">) => {
+  /** aggregateMenu: veri ciplerinde ozet turu dugmesi (yalnizca alan seci penceresinde gosterilir). */
+  const renderChips = (area: Exclude<Area, "all">, { aggregateMenu = false }: { aggregateMenu?: boolean } = {}) => {
     if (area === "values") {
       return config.values.map((value, index) => (
         <FieldChip
@@ -419,16 +430,18 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
           dropProps={dropProps("values", index)}
           onRemove={() => move({ field: value.field, from: "values", index }, "all")}
         >
-          <AggregateMenuButton
-            label={labelOf(value.field)}
-            aggregate={value.aggregate}
-            onChange={(aggregate) =>
-              onChange({
-                ...config,
-                values: config.values.map((item, i) =>
-                  i === index ? { ...item, aggregate } : item),
-              })}
-          />
+          {aggregateMenu ? (
+            <AggregateMenuButton
+              label={labelOf(value.field)}
+              aggregate={value.aggregate}
+              onChange={(aggregate) =>
+                onChange({
+                  ...config,
+                  values: config.values.map((item, i) =>
+                    i === index ? { ...item, aggregate } : item),
+                })}
+            />
+          ) : null}
         </FieldChip>
       ));
     }
@@ -467,7 +480,7 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
       dropProps={dropProps(area)}
       empty={isEmpty(area)}
     >
-      {renderChips(area)}
+      {renderChips(area, { aggregateMenu: true })}
     </AreaBox>
   );
 
@@ -599,7 +612,9 @@ export function FieldChip({
         }
       }}
       className={clsx(
-        "dark:bg-dark-600 dark:border-dark-500 focus-visible:ring-primary-500 relative flex shrink-0 items-center gap-1 rounded-none border border-gray-200 bg-gray-100 py-1 pr-1 pl-2.5 text-sm outline-hidden focus-visible:ring-2",
+        "dark:bg-dark-600 dark:border-dark-500 focus-visible:ring-primary-500 relative flex shrink-0 items-center gap-1 rounded-none border border-gray-200 bg-gray-100 py-1 pl-2.5 text-sm outline-hidden focus-visible:ring-2",
+        // Sagda dugme yoksa bosluk sol ile esitlenir
+        children ? "pr-1" : "pr-2.5",
         editing ? "cursor-default" : "cursor-grab active:cursor-grabbing",
         dragging && "opacity-40",
         insertBefore && "before:bg-primary-500 before:absolute before:-top-1 before:right-0 before:left-0 before:h-0.5 before:rounded",
