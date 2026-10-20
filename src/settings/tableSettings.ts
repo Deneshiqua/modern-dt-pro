@@ -190,6 +190,7 @@ export function toShareableTableSettings(settings: DataTableSettings): DataTable
   const shareable: DataTableSettings = {};
   if (settings.columnOrder?.length) shareable.columnOrder = settings.columnOrder;
   if (settings.hiddenColumns?.length) shareable.hiddenColumns = settings.hiddenColumns;
+  if (settings.grouping?.length) shareable.grouping = settings.grouping;
   if (settings.columnLabels && Object.keys(settings.columnLabels).length > 0) shareable.columnLabels = settings.columnLabels;
   if (hasPivotNumberFormat(settings.numberFormat)) shareable.numberFormat = settings.numberFormat;
   if (settings.columnNumberFormats && Object.keys(settings.columnNumberFormats).length > 0) {
@@ -213,6 +214,7 @@ const TARGET_IDS = ["cell", "row"] as const;
 const SETTINGS_KEYS = [
   "columnOrder",
   "hiddenColumns",
+  "grouping",
   "columnLabels",
   "numberFormat",
   "columnNumberFormats",
@@ -323,7 +325,7 @@ export function parseTableSettingsJson(text: string): TableSettingsParseResult {
       errors.push(`"${key}" tanınmayan ayar. Geçerli: ${SETTINGS_KEYS.join(", ")}.`);
     }
   });
-  const list = (key: "columnOrder" | "hiddenColumns") => {
+  const list = (key: "columnOrder" | "hiddenColumns" | "grouping") => {
     const value = parsed[key];
     if (value === undefined) return undefined;
     if (!isStringArray(value)) {
@@ -336,6 +338,7 @@ export function parseTableSettingsJson(text: string): TableSettingsParseResult {
   const settings: DataTableSettings = {
     columnOrder: list("columnOrder"),
     hiddenColumns: list("hiddenColumns"),
+    grouping: list("grouping"),
     columnLabels: readStringMap(parsed.columnLabels, "columnLabels", errors),
     numberFormat: readNumberFormat(parsed.numberFormat, "numberFormat", errors),
     columnNumberFormats: readPerColumn(parsed.columnNumberFormats, "columnNumberFormats", errors, readNumberFormat),
@@ -355,6 +358,7 @@ export function findUnknownSettingColumns(settings: DataTableSettings, columnIds
   const referenced = new Set<string>([
     ...(settings.columnOrder ?? []),
     ...(settings.hiddenColumns ?? []),
+    ...(settings.grouping ?? []),
     ...Object.keys(settings.columnLabels ?? {}),
     ...Object.keys(settings.columnNumberFormats ?? {}),
     ...Object.keys(settings.columnCellStyles ?? {}),
@@ -385,6 +389,7 @@ export function buildTableSettingsSchema(columnIds: string[]) {
     properties: {
       columnOrder: columnList("Kolonların gösterim sırası"),
       hiddenColumns: columnList("Gizlenen kolonlar"),
+      grouping: columnList("Gruplanan kolonlar (sırasıyla)"),
       columnLabels: perColumn("Kolon başlıkları", { type: "string" }),
       numberFormat: NUMBER_FORMAT_SCHEMA,
       columnNumberFormats: perColumn("Kolona özel sayı biçimi", NUMBER_FORMAT_SCHEMA),

@@ -297,6 +297,8 @@ export type DataTableSettings = {
   columnOrder?: string[];
   /** Gizlenen kolonlar (toolbar'daki kolon secici ile ortak). */
   hiddenColumns?: string[];
+  /** Gruplanan kolonlar (sirasiyla); toolbar'daki gruplama alani ile ortak. */
+  grouping?: string[];
   /** Kolon basliklari; columnLabels prop'unun ustune yazilir. */
   columnLabels?: Record<string, string>;
   /** Tum sayisal kolonlarin varsayilan sayi bicimi. */

@@ -1068,7 +1068,7 @@ const PAGINATION_PROPS: PropRow[] = [
 
 const SETTINGS_PROPS: PropRow[] = [
   { name: "enableSettingsPanel", type: "boolean", def: "false", desc: "Toolbar'da Tablo Ayarları penceresi: Alan Seçici, Koşullu Biçimlendirme, Sayı Biçimi, Hücre Renkleri, Yapılandırma, Veri." },
-  { name: "settings", type: "DataTableSettings", def: "—", desc: "Kontrollü ayarlar: columnOrder, hiddenColumns, columnLabels, numberFormat, columnNumberFormats, cellStyles, columnCellStyles, conditions." },
+  { name: "settings", type: "DataTableSettings", def: "—", desc: "Kontrollü ayarlar: columnOrder, hiddenColumns, grouping, columnLabels, numberFormat, columnNumberFormats, cellStyles, columnCellStyles, conditions." },
   { name: "defaultSettings", type: "DataTableSettings", def: "—", desc: "Kontrolsüz kullanımda başlangıç ayarları. stateStorageKey verilirse ayarlar localStorage'da saklanır." },
   { name: "onSettingsChange", type: "(settings) => void", def: "—", desc: "Ayarlar değişince (pencereden ya da toolbar kolon seçicisinden)." },
   { name: "settingsTabs", type: "Partial<Record<tab, boolean>>", def: "hepsi açık", desc: "Gösterilecek sekmeler, ör. { data: false }." },

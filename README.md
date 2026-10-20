@@ -289,7 +289,7 @@ The Data and Configuration dialogs use a bundled `monaco-editor` (no CDN) with s
 - **Koşullu Biçimlendirme**: rules such as `total >= 2000`; each rule paints the cell or the whole row and can be limited to data rows or group/total rows.
 - **Sayı Biçimi**: default format for numeric columns plus per-column overrides (decimals, separators, currency, percent, alignment).
 - **Hücre Renkleri**: colors for data rows (with an alternating 2nd color), group rows and the grand total row, globally or per column.
-- **Yapılandırma**: summary and shareable JSON of all settings (copy, download, load from file, edit and apply).
+- **Yapılandırma**: summary and shareable JSON of all settings (copy, download, load from file, edit and apply). The JSON also includes the current grouping (`grouping`), kept in sync with the toolbar grouping area.
 - **Veri**: paste or load a JSON list to rebuild the table (`enableDataImport`; not available with `dataSource`).
 
 ```tsx

@@ -218,9 +218,12 @@ function DataTableInner<T extends Record<string, any>>({
     const [internalSorting, setInternalSorting] = useState<SortingState>(defaultSorting);
     const [globalFilter, setGlobalFilter] = useState("");
     const [internalColumnFilters, setInternalColumnFilters] = useState<ColumnFiltersState>([]);
-    const [grouping, setGrouping] = useState<GroupingState>(
-        enableGrouping ? defaultGrouping : EMPTY_GROUPING,
-    );
+    // Tablo Ayarlari'nda kayitli gruplama varsa defaultGrouping yerine o kullanilir
+    const [grouping, setGrouping] = useState<GroupingState>(() => {
+        if (!enableGrouping) return EMPTY_GROUPING;
+        const initialSettings = controlledSettings ?? loadPersistedTableSettings(stateStorageKey) ?? defaultSettings;
+        return initialSettings?.grouping ?? defaultGrouping;
+    });
     const [viewSettings, setViewSettings] = useState<TableViewSettings>(() => ({
         fullScreen: defaultViewSettings?.fullScreen ?? false,
         rowDense: defaultViewSettings?.rowDense ?? false,
@@ -943,6 +946,36 @@ function DataTableInner<T extends Record<string, any>>({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hiddenColumnsKey]);
 
+    // Ayarlardaki gruplama disaridan (Yapilandirma, kontrollu prop) degisince tabloya uygula
+    const settingsGroupingKey = JSON.stringify(tableSettings.grouping ?? []);
+    const appliedGroupingKeyRef = useRef(settingsGroupingKey);
+    useEffect(() => {
+        if (appliedGroupingKeyRef.current === settingsGroupingKey) return;
+        appliedGroupingKeyRef.current = settingsGroupingKey;
+        if (!groupingEnabled) return;
+        const known = new Set(dataColumnIds);
+        // Kolonlar henuz bilinmiyorsa (uzak veri yukleniyor) filtrelenmez
+        const next = (tableSettings.grouping ?? []).filter((column) => known.size === 0 || known.has(column));
+        setGrouping((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [settingsGroupingKey]);
+
+    // Toolbar'daki gruplama (surukle-birak, menu, kaldirma) ayarlara yazilir
+    const isFirstGroupingSyncRef = useRef(true);
+    useEffect(() => {
+        if (isFirstGroupingSyncRef.current) {
+            isFirstGroupingSyncRef.current = false;
+            return;
+        }
+        if (!settingsActive) return;
+        const key = JSON.stringify(grouping);
+        if (key === appliedGroupingKeyRef.current) return;
+        appliedGroupingKeyRef.current = key;
+        const { grouping: _previous, ...rest } = tableSettingsRef.current;
+        updateTableSettings(grouping.length > 0 ? { ...rest, grouping: [...grouping] } : rest);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [grouping]);
+
     // Toolbar kolon secicisi de ayni gorunurlugu kullanir; ayarlardaki gizli kolon listesi guncel tutulur
     const handleColumnVisibilityChange: OnChangeFn<VisibilityState> = (updaterOrValue) => {
         const next = typeof updaterOrValue === "function" ? updaterOrValue(columnVisibility) : updaterOrValue;
@@ -1663,6 +1696,12 @@ function DataTableInner<T extends Record<string, any>>({
         });
     }, [enableSettingsPanel, effectiveData, tableSettings.columnOrder, tableSettings.columnLabels, dataColumnIds, providedColumns, generatedColumns, columnLabels, grouping]);
     const hasTableSettings = Object.keys(tableSettings).length > 0;
+    // Pencere guncel gruplamayi gosterir (defaultGrouping henuz ayarlara yazilmamis olabilir)
+    const dialogSettings = useMemo(() => {
+        if (JSON.stringify(tableSettings.grouping ?? []) === JSON.stringify(grouping)) return tableSettings;
+        const { grouping: _previous, ...rest } = tableSettings;
+        return grouping.length > 0 ? { ...rest, grouping: [...grouping] } : rest;
+    }, [tableSettings, grouping]);
     const handleDataImport = (rows: Record<string, unknown>[]) => {
         setImportedData(rows as T[]);
         // Yeni veride olmayan kolonlara gore gruplama kalmasin
@@ -2886,7 +2925,7 @@ function DataTableInner<T extends Record<string, any>>({
                     tabs={settingsTabs}
                     columns={settingsColumns}
                     naturalOrder={dataColumnIds}
-                    settings={tableSettings}
+                    settings={dialogSettings}
                     onSettingsChange={updateTableSettings}
                     currentData={effectiveData as readonly Record<string, unknown>[]}
                     onDataImport={enableDataImport && !hasDataSource ? handleDataImport : undefined}

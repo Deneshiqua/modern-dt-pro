@@ -45,6 +45,7 @@ function compact(settings: DataTableSettings): DataTableSettings {
   const next = { ...settings };
   if (!next.columnOrder?.length) delete next.columnOrder;
   if (!next.hiddenColumns?.length) delete next.hiddenColumns;
+  if (!next.grouping?.length) delete next.grouping;
   if (!next.columnLabels || Object.keys(next.columnLabels).length === 0) delete next.columnLabels;
   if (!next.conditions?.length) delete next.conditions;
   (Object.keys(next) as (keyof DataTableSettings)[]).forEach((key) => {
@@ -298,6 +299,7 @@ function TableSettingsSummary({
           )}
         </SummaryRow>
         <SummaryRow label="Gizli kolonlar">{chips(settings.hiddenColumns ?? [])}</SummaryRow>
+        <SummaryRow label="Gruplama">{chips(settings.grouping ?? [])}</SummaryRow>
         <SummaryRow label="Yeniden adlandırılan kolonlar">
           {labelEntries.length === 0 ? empty : (
             <ul className="flex flex-col gap-1 text-sm">

@@ -109,6 +109,7 @@ describe("yapilandirma JSON", () => {
   const settings: DataTableSettings = {
     columnOrder: ["total", "name"],
     hiddenColumns: ["id"],
+    grouping: ["category", "city"],
     columnLabels: { total: "Tutar" },
     numberFormat: { decimalPlaces: 2 },
     columnNumberFormats: { total: { currencySymbol: "₺" } },
@@ -131,17 +132,19 @@ describe("yapilandirma JSON", () => {
   it("hatali alanlari bildirir", () => {
     const parsed = parseTableSettingsJson(JSON.stringify({
       columnOrder: "total",
+      grouping: [1],
       foo: 1,
       conditions: [{ operator: "gt", target: "row", format: {} }],
     }));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
     expect(parsed.errors.some((error) => error.includes("columnOrder"))).toBe(true);
+    expect(parsed.errors.some((error) => error.includes('"grouping"'))).toBe(true);
     expect(parsed.errors.some((error) => error.includes('"foo"'))).toBe(true);
     expect(parsed.errors.some((error) => error.includes('"column" verilmeli'))).toBe(true);
   });
 
   it("tabloda olmayan kolonlari bulur", () => {
-    expect(findUnknownSettingColumns(settings, ["total", "name"])).toEqual(["id"]);
+    expect(findUnknownSettingColumns(settings, ["total", "name", "category"])).toEqual(["id", "city"]);
   });
 });
