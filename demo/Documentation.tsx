@@ -260,6 +260,8 @@ type DataTableGroupItem<T> = {
         <PropTable rows={SELECTION_PROPS} />
         <h3>Sayfalama</h3>
         <PropTable rows={PAGINATION_PROPS} />
+        <h3>Tablo ayarları</h3>
+        <PropTable rows={SETTINGS_PROPS} />
         <h3>SQL, bildirim, toolbar</h3>
         <PropTable rows={MISC_PROPS} />
       </section>
@@ -1062,6 +1064,16 @@ const PAGINATION_PROPS: PropRow[] = [
   { name: "initialPageSize", type: "number", def: "10", desc: "Kontrolsüz sayfalamada başlangıç satır sayısı." },
   { name: "pageSizeOptions", type: "number[]", def: "[10, 20, 50, 100]", desc: "Sayfa başına satır seçenekleri." },
   { name: "totalRowCount", type: "number", def: "—", desc: "Sunucu sayfalamasında toplam kayıt sayısı." },
+];
+
+const SETTINGS_PROPS: PropRow[] = [
+  { name: "enableSettingsPanel", type: "boolean", def: "false", desc: "Toolbar'da Tablo Ayarları penceresi: Alan Seçici, Koşullu Biçimlendirme, Sayı Biçimi, Hücre Renkleri, Yapılandırma, Veri." },
+  { name: "settings", type: "DataTableSettings", def: "—", desc: "Kontrollü ayarlar: columnOrder, hiddenColumns, columnLabels, numberFormat, columnNumberFormats, cellStyles, columnCellStyles, conditions." },
+  { name: "defaultSettings", type: "DataTableSettings", def: "—", desc: "Kontrolsüz kullanımda başlangıç ayarları. stateStorageKey verilirse ayarlar localStorage'da saklanır." },
+  { name: "onSettingsChange", type: "(settings) => void", def: "—", desc: "Ayarlar değişince (pencereden ya da toolbar kolon seçicisinden)." },
+  { name: "settingsTabs", type: "Partial<Record<tab, boolean>>", def: "hepsi açık", desc: "Gösterilecek sekmeler, ör. { data: false }." },
+  { name: "enableDataImport", type: "boolean", def: "false", desc: "Veri sekmesi: JSON listesi yapıştır/yükle, tablo bu veriyle yeniden oluşur. dataSource ile çalışmaz." },
+  { name: "onDataImport", type: "(rows) => void", def: "—", desc: "Veri sekmesinden yeni veri yüklenince." },
 ];
 
 const MISC_PROPS: PropRow[] = [

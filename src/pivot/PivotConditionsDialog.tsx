@@ -28,6 +28,15 @@ import {
   pivotOperatorArity,
   resolvePivotCellStyle,
 } from "./pivotConditions";
+import { SETTINGS_TERMS, type SettingsPanelMode } from "./settingsTerms";
+
+/** Panelin duzenledigi kural: tablo modunda satirin tamamini boyama secenegi de vardir. */
+export type ConditionsPanelCondition = DataTablePivotCondition & { target?: "cell" | "row" };
+
+const TARGET_OPTIONS: { id: NonNullable<ConditionsPanelCondition["target"]>; label: string; hint: string }[] = [
+  { id: "cell", label: "Yalnızca hücre", hint: "Koşulun kontrol edildiği hücre boyanır" },
+  { id: "row", label: "Tüm satır", hint: "Koşul tutan satırın bütün hücreleri boyanır" },
+];
 
 /** Excel'deki hazir "Hucre stili" secenekleri. */
 const FORMAT_PRESETS: { label: string; format: DataTablePivotConditionFormat }[] = [
@@ -60,12 +69,6 @@ const OPERATOR_SYMBOLS: Partial<Record<DataTablePivotConditionOperator, string>>
   neq: "≠",
 };
 
-const APPLY_OPTIONS: { id: NonNullable<DataTablePivotCondition["applyTo"]>; label: string; hint: string }[] = [
-  { id: "all", label: "Tüm hücreler", hint: "Veri hücreleri ile ara ve genel toplamlar" },
-  { id: "cells", label: "Veri hücreleri", hint: "Toplam satır ve sütunları hariç" },
-  { id: "totals", label: "Toplamlar", hint: "Yalnızca ara toplam ve genel toplam hücreleri" },
-];
-
 const FIELD_CLASS =
   "dark:bg-dark-800 dark:border-dark-450 dark:text-dark-100 h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-800 outline-hidden focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
 
@@ -84,9 +87,14 @@ const sameFormat = (a: DataTablePivotConditionFormat, b: DataTablePivotCondition
 export const formatStyle = (format: DataTablePivotConditionFormat) =>
   resolvePivotCellStyle([{ id: "preview", operator: "notEmpty", format }], undefined, 1, false);
 
-const isIncomplete = (condition: DataTablePivotCondition) => {
+/** Satir hedefi kosulun hangi kolonda kontrol edilecegini bilmelidir. */
+const needsMeasure = (condition: ConditionsPanelCondition) => condition.target === "row" && !condition.measure;
+
+const isIncomplete = (condition: ConditionsPanelCondition) => {
   const arity = pivotOperatorArity(condition.operator);
-  return (arity >= 1 && condition.value === undefined) || (arity === 2 && condition.value2 === undefined);
+  return (arity >= 1 && condition.value === undefined)
+    || (arity === 2 && condition.value2 === undefined)
+    || needsMeasure(condition);
 };
 
 /** "Toplam (Toplam) > 30.000" gibi okunur ozet. */
@@ -109,10 +117,12 @@ export function describeCondition(condition: DataTablePivotCondition, measureLab
 }
 
 type PivotConditionsButtonProps = {
-  conditions: DataTablePivotCondition[];
+  conditions: ConditionsPanelCondition[];
   values: DataTablePivotValue[];
   valueLabel: (value: DataTablePivotValue) => string;
-  onChange: (conditions: DataTablePivotCondition[]) => void;
+  onChange: (conditions: ConditionsPanelCondition[]) => void;
+  /** Metinler ve "tum satir" secenegi: pivot veri alanlari ya da tablo kolonlari. Varsayilan: "pivot". */
+  mode?: SettingsPanelMode;
 };
 
 
@@ -123,6 +133,7 @@ export function PivotConditionsPanel({
   values,
   valueLabel,
   onChange,
+  mode = "pivot",
 }: PivotConditionsButtonProps & { open: boolean; onClose: () => void }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(conditions[0]?.id);
   const selected = conditions.find((condition) => condition.id === selectedId) ?? conditions[0];
@@ -134,13 +145,13 @@ export function PivotConditionsPanel({
   const measureOptions = values.filter(
     (value, index) => values.findIndex((other) => measureKey(other) === measureKey(value)) === index,
   );
-  const measureLabel = (condition: DataTablePivotCondition) => {
+  const measureLabel = (condition: ConditionsPanelCondition) => {
     if (!condition.measure) return "Değer";
     const match = measureOptions.find((value) => measureKey(value) === measureKey(condition.measure));
     return match ? valueLabel(match) : `${condition.measure.field} (tabloda yok)`;
   };
 
-  const update = (id: string, patch: Partial<DataTablePivotCondition>) =>
+  const update = (id: string, patch: Partial<ConditionsPanelCondition>) =>
     onChange(conditions.map((condition) => (condition.id === id ? { ...condition, ...patch } : condition)));
 
   const addCondition = () => {
@@ -213,10 +224,14 @@ export function PivotConditionsPanel({
                       </span>
                       <span className="dark:text-dark-100 line-clamp-2 text-sm break-words text-gray-800">
                         {describeCondition(condition, measureLabel(condition))}
+                        {condition.target === "row" ? " · tüm satır" : ""}
                       </span>
                     </span>
                     {isIncomplete(condition) ? (
-                      <ExclamationTriangleIcon className="size-4 shrink-0 text-amber-500" title="Değer girilmedi" />
+                      <ExclamationTriangleIcon
+                        className="size-4 shrink-0 text-amber-500"
+                        title={needsMeasure(condition) ? "Kolon seçilmedi" : "Değer girilmedi"}
+                      />
                     ) : null}
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5 py-2 pr-2 pl-1">
@@ -265,6 +280,7 @@ export function PivotConditionsPanel({
               condition={selected}
               measureOptions={measureOptions}
               valueLabel={valueLabel}
+              mode={mode}
               onChange={(patch) => update(selected.id, patch)}
             />
           ) : (
@@ -309,15 +325,19 @@ function ConditionEditor({
   condition,
   measureOptions,
   valueLabel,
+  mode,
   onChange,
 }: {
-  condition: DataTablePivotCondition;
+  condition: ConditionsPanelCondition;
   measureOptions: DataTablePivotValue[];
   valueLabel: (value: DataTablePivotValue) => string;
-  onChange: (patch: Partial<DataTablePivotCondition>) => void;
+  mode: SettingsPanelMode;
+  onChange: (patch: Partial<ConditionsPanelCondition>) => void;
 }) {
+  const terms = SETTINGS_TERMS[mode];
   const arity = pivotOperatorArity(condition.operator);
   const applyTo = condition.applyTo ?? "all";
+  const target = condition.target ?? "cell";
   const missingMeasure =
     condition.measure && !measureOptions.some((value) => measureKey(value) === measureKey(condition.measure));
   const setFormat = (patch: Partial<DataTablePivotConditionFormat>) =>
@@ -327,7 +347,7 @@ function ConditionEditor({
     <div className="flex flex-col gap-6 p-5">
       <EditorSection step={1} title="Koşul" description="Hangi hücrelerin biçimlendirileceğini belirler.">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Hangi değer?">
+          <Field label={terms.which} error={needsMeasure(condition) ? "Satırı boyamak için bir kolon seçin" : undefined}>
             <select
               className={FIELD_CLASS}
               value={measureKey(condition.measure)}
@@ -336,7 +356,7 @@ function ConditionEditor({
                 onChange({ measure: option ? { field: option.field, aggregate: option.aggregate } : undefined });
               }}
             >
-              <option value="">Tüm veri alanları</option>
+              <option value="">{terms.allConditions}</option>
               {measureOptions.map((value) => (
                 <option key={measureKey(value)} value={measureKey(value)}>{valueLabel(value)}</option>
               ))}
@@ -373,28 +393,26 @@ function ConditionEditor({
       </EditorSection>
 
       <EditorSection step={2} title="Nerede uygulansın?">
-        <div role="radiogroup" className="dark:border-dark-450 inline-flex rounded-md border border-gray-300 p-0.5">
-          {APPLY_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              role="radio"
-              aria-checked={applyTo === option.id}
-              onClick={() => onChange({ applyTo: option.id })}
-              className={clsx(
-                "rounded px-3 py-1.5 text-sm transition-colors",
-                applyTo === option.id
-                  ? "bg-primary-600 font-medium text-white"
-                  : "dark:text-dark-100 dark:hover:bg-dark-600 text-gray-700 hover:bg-gray-100",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
-          {APPLY_OPTIONS.find((option) => option.id === applyTo)?.hint}
-        </p>
+        {mode === "table" ? (
+          <span className="dark:text-dark-300 mb-1.5 block text-xs font-medium text-gray-600">Hangi satırlar?</span>
+        ) : null}
+        <RadioGroup
+          label={mode === "table" ? "Hangi satırlar?" : "Uygulanacak yer"}
+          options={terms.applyOptions}
+          value={applyTo}
+          onChange={(next) => onChange({ applyTo: next })}
+        />
+        {mode === "table" ? (
+          <div className="mt-4">
+            <span className="dark:text-dark-300 mb-1.5 block text-xs font-medium text-gray-600">Ne boyansın?</span>
+            <RadioGroup
+              label="Ne boyansın?"
+              options={TARGET_OPTIONS}
+              value={target}
+              onChange={(next) => onChange({ target: next === "cell" ? undefined : next })}
+            />
+          </div>
+        ) : null}
       </EditorSection>
 
       <EditorSection step={3} title="Biçim" description="Hazır bir stil seçin ya da renkleri kendiniz belirleyin.">
@@ -473,6 +491,45 @@ function ConditionEditor({
         </div>
       </EditorSection>
     </div>
+  );
+}
+
+function RadioGroup<Id extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { id: Id; label: string; hint: string }[];
+  value: Id;
+  onChange: (value: Id) => void;
+}) {
+  return (
+    <>
+      <div role="radiogroup" aria-label={label} className="dark:border-dark-450 inline-flex rounded-md border border-gray-300 p-0.5">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={value === option.id}
+            onClick={() => onChange(option.id)}
+            className={clsx(
+              "rounded px-3 py-1.5 text-sm transition-colors",
+              value === option.id
+                ? "bg-primary-600 font-medium text-white"
+                : "dark:text-dark-100 dark:hover:bg-dark-600 text-gray-700 hover:bg-gray-100",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
+        {options.find((option) => option.id === value)?.hint}
+      </p>
+    </>
   );
 }
 

@@ -9,6 +9,7 @@ A feature-rich, type-safe React data table built on TanStack Table. It includes 
 - Column sorting, text filters, and faceted value filters
 - Drag-and-drop grouping with configurable aggregations
 - Pivot grid with expandable row/column hierarchies, subtotals, date breakdowns, cell colors, number formatting, conditional formatting, JSON data import, and shareable configuration
+- Table settings dialog: column chooser (show/hide, order, rename), conditional formatting (cell or whole row), number formatting, cell colors, shareable JSON configuration, and JSON data import
 - Row selection with bulk action hooks
 - Excel and JSON exports from a single download menu
 - Global search and column visibility controls
@@ -280,6 +281,39 @@ Headless helpers are exported as well: `buildPivotModel`, `layoutPivot`, `detect
 
 The Data and Configuration dialogs use a bundled `monaco-editor` (no CDN) with syntax highlighting and schema-based completion. It is code-split and only loaded when a JSON dialog opens; a plain textarea is used while loading or if it fails. Workers are loaded with Vite's `?worker` imports, so the pivot JSON editor targets Vite projects. An existing `self.MonacoEnvironment` is respected.
 
+## Table settings
+
+`enableSettingsPanel` adds a settings dialog to the toolbar with the same tabs as the pivot settings, adapted to a flat table:
+
+- **Alan Seçici**: show/hide, reorder (drag or arrows) and rename columns. Shares visibility with the toolbar column picker.
+- **Koşullu Biçimlendirme**: rules such as `total >= 2000`; each rule paints the cell or the whole row and can be limited to data rows or group/total rows.
+- **Sayı Biçimi**: default format for numeric columns plus per-column overrides (decimals, separators, currency, percent, alignment).
+- **Hücre Renkleri**: colors for data rows (with an alternating 2nd color), group rows and the grand total row, globally or per column.
+- **Yapılandırma**: summary and shareable JSON of all settings (copy, download, load from file, edit and apply).
+- **Veri**: paste or load a JSON list to rebuild the table (`enableDataImport`; not available with `dataSource`).
+
+```tsx
+import { DataTable, type DataTableSettings } from "modern-dt-pro";
+
+const [settings, setSettings] = useState<DataTableSettings>({
+  columnNumberFormats: { total: { decimalPlaces: 2, currencySymbol: "₺" } },
+  conditions: [
+    { id: "low-stock", column: "quantity", operator: "lt", value: 5, target: "row",
+      format: { backgroundColor: "#fee2e2" } },
+  ],
+});
+
+<DataTable
+  data={rows}
+  enableSettingsPanel
+  enableDataImport
+  settings={settings}
+  onSettingsChange={setSettings}
+/>
+```
+
+Use `defaultSettings` instead of `settings` for uncontrolled use; with `stateStorageKey` the settings are saved to `localStorage`. `settingsTabs={{ data: false }}` hides individual tabs.
+
 ## Value mapping
 
 Use `valueMappers` to display readable labels while keeping raw values in your data:
@@ -487,6 +521,8 @@ Alternatively, provide an `onNotify` callback to an individual table.
 - `toolbarExtra`: renders custom toolbar content
 - `onRowDoubleClick`: called with the row data when a data row is double-clicked (ignored on group/total rows and on buttons, links and checkboxes)
 - `rowClassName` / `rowStyle`: class or inline style for data rows; pass a function `(row, index) => ...` for per-row values
+- `enableSettingsPanel` / `settings` / `defaultSettings` / `onSettingsChange`: table settings dialog (see [Table settings](#table-settings))
+- `enableDataImport` / `onDataImport`: "Veri" tab in the settings dialog
 - `pivot` / `onPivotChange`: pivot grid mode (see [Pivot grid](#pivot-grid))
 
 See [`DataTableProps`](https://github.com/deneshiqua/modern-dt-pro/blob/main/src/types.ts) for the complete typed API.

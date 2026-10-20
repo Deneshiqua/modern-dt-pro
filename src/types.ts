@@ -266,6 +266,54 @@ export type DataTablePivotCondition = {
 /** Tarih alanlari icin kirilim; alan kimligi `createdAt::year` bicimindedir. */
 export type DataTablePivotDateInterval = "year" | "quarter" | "month" | "day" | "hour";
 
+/** Tablo Ayarlari penceresindeki sekmeler (pivot ile ayni kimlikler). */
+export type DataTableSettingsTab = DataTablePivotToolbarButton;
+
+/** Normal tablo icin kosullu bicimlendirme kurali. */
+export type DataTableCondition = {
+  id: string;
+  /** Kosulun kontrol edildigi kolon; verilmezse tum sayisal kolonlar (yalnizca "cell" hedefinde). */
+  column?: string;
+  operator: DataTablePivotConditionOperator;
+  /** Karsilastirma degeri (between/notBetween icin alt sinir). */
+  value?: number;
+  /** between/notBetween icin ust sinir. */
+  value2?: number;
+  /** "all": tum satirlar, "cells": veri satirlari, "totals": grup ve genel toplam satirlari. */
+  applyTo?: "all" | "cells" | "totals";
+  /** "cell": yalnizca kosulun kontrol edildigi hucre, "row": satirin tamami (kolon secilmelidir). Varsayilan: "cell". */
+  target?: "cell" | "row";
+  format: DataTablePivotConditionFormat;
+  /** false ise kural saklanir ama uygulanmaz. */
+  enabled?: boolean;
+};
+
+/**
+ * Tablo Ayarlari penceresinde duzenlenen ve Yapilandirma sekmesinde JSON olarak paylasilan ayarlar.
+ * Kolon kimlikleri veri alan adlaridir.
+ */
+export type DataTableSettings = {
+  /** Kolonlarin gosterim sirasi; listede olmayan kolonlar sona eklenir. */
+  columnOrder?: string[];
+  /** Gizlenen kolonlar (toolbar'daki kolon secici ile ortak). */
+  hiddenColumns?: string[];
+  /** Kolon basliklari; columnLabels prop'unun ustune yazilir. */
+  columnLabels?: Record<string, string>;
+  /** Tum sayisal kolonlarin varsayilan sayi bicimi. */
+  numberFormat?: DataTablePivotNumberFormat;
+  /** Kolona ozel sayi bicimi; verilmeyen ayarlar numberFormat'tan gelir. */
+  columnNumberFormats?: Record<string, DataTablePivotNumberFormat>;
+  /**
+   * Varsayilan hucre renkleri: cells (veri satirlari), alternateCells (satirlar sirayla 2. renk),
+   * totals (grup satirlari), grandTotals (genel toplam satiri).
+   */
+  cellStyles?: DataTablePivotCellStyles;
+  /** Kolona ozel hucre renkleri; verilmeyen renkler cellStyles'tan gelir. */
+  columnCellStyles?: Record<string, DataTablePivotCellStyles>;
+  /** Kosullu bicimlendirme kurallari; listedeki sirayla uygulanir. */
+  conditions?: DataTableCondition[];
+};
+
 export type DataTablePivotConfig<T = Record<string, unknown>> = {
   /**
    * Satir boyutlari (hiyerarsi sirasiyla). Tarih alanlari kirilimla verilebilir:
@@ -436,6 +484,26 @@ export type DataTableProps<T> = {
   rowClassName?: string | ((row: T, index: number) => string | undefined);
   /** Veri satirinin `<tr>` stili. Fonksiyon verilirse satir verisi ve kaynak dizideki sirasi ile cagrilir. */
   rowStyle?: CSSProperties | ((row: T, index: number) => CSSProperties | undefined);
+  /**
+   * Toolbar'da "Tablo ayarlari" penceresi: Alan Secici, Kosullu Bicimlendirme, Sayi Bicimi,
+   * Hucre Renkleri, Yapilandirma ve Veri sekmeleri. Pivot modunda kullanilmaz. Varsayilan: false.
+   */
+  enableSettingsPanel?: boolean;
+  /** Kontrollu tablo ayarlari. Verilmezse tablo kendi durumunu tutar (stateStorageKey varsa saklar). */
+  settings?: DataTableSettings;
+  /** Kontrolsuz kullanimda baslangic ayarlari. */
+  defaultSettings?: DataTableSettings;
+  /** Tablo ayarlari degistiginde cagrilir. */
+  onSettingsChange?: (settings: DataTableSettings) => void;
+  /** Ayarlar penceresinde gosterilecek sekmeler, ornegin `{ data: false }`. Verilmeyen sekmeler gorunur. */
+  settingsTabs?: Partial<Record<DataTableSettingsTab, boolean>>;
+  /**
+   * Ayarlar penceresinde "Veri" sekmesi: kullanici JSON listesi yapistirir, tablo bu veriyle yeniden
+   * olusturulur. `dataSource` ile kullanilmaz. Varsayilan: false.
+   */
+  enableDataImport?: boolean;
+  /** "Veri" sekmesinden yeni veri yuklendiginde cagrilir. */
+  onDataImport?: (rows: Record<string, unknown>[]) => void;
   onNotify?: NotifyFn;
   toolbarExtra?: ReactNode;
 };

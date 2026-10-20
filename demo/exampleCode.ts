@@ -19,6 +19,30 @@ export const GROUPED_CODE = `import { DataTable } from "modern-dt-pro";
   defaultSorting={[{ id: "createdAt", desc: false }]}
 />`;
 
+export const SETTINGS_CODE = `import { DataTable, type DataTableSettings } from "modern-dt-pro";
+
+const DEFAULT_SETTINGS: DataTableSettings = {
+  columnNumberFormats: { total: { decimalPlaces: 2, currencySymbol: "₺" } },
+  conditions: [
+    { id: "yuksek", column: "total", operator: "gte", value: 2000, applyTo: "cells",
+      format: { backgroundColor: "#dcfce7", color: "#166534" } },
+  ],
+};
+
+<DataTable
+  data={rows}
+  title="Tablo ayarları"
+  excludeColumns={["id"]}
+  columnLabels={COLUMN_LABELS}
+  valueMappers={VALUE_MAPPERS}
+  defaultGrouping={["category"]}
+  aggregate={{ total: "sum", quantity: "sum" }}
+  enableSettingsPanel
+  enableDataImport
+  defaultSettings={DEFAULT_SETTINGS}
+  onSettingsChange={(settings) => console.log(settings)}
+/>`;
+
 export const SELECTION_CODE = `import { DataTable } from "modern-dt-pro";
 
 <DataTable

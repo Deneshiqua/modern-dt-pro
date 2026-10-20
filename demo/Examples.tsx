@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 
-import { DataTable, type NotifyType, type SelectionAction } from "modern-dt-pro";
+import { DataTable, type DataTableSettings, type NotifyType, type SelectionAction } from "modern-dt-pro";
 import { ExampleFrame } from "./ExampleFrame";
 import { createRemoteDemoDataSource } from "./remoteDataSource";
 import {
@@ -12,6 +12,7 @@ import {
   MAPPED_CODE,
   PIVOT_CODE,
   SELECTION_CODE,
+  SETTINGS_CODE,
   SQL_CODE,
   TEMPLATE_CODE,
   VISIBLE_CODE,
@@ -24,6 +25,21 @@ import {
   createPivotDemoRows,
   type DemoRow,
 } from "./data";
+
+// "Tablo ayarlari" ornegi: Toplam kolonu TL bicimli, 2000 ve ustu yesil
+const SETTINGS_EXAMPLE_DEFAULTS: DataTableSettings = {
+  columnNumberFormats: { total: { decimalPlaces: 2, currencySymbol: "₺" } },
+  conditions: [
+    {
+      id: "yuksek",
+      column: "total",
+      operator: "gte",
+      value: 2000,
+      applyTo: "cells",
+      format: { backgroundColor: "#dcfce7", color: "#166534" },
+    },
+  ],
+};
 
 type ExamplesProps = {
   onNotify: (type: NotifyType, message: string) => void;
@@ -100,6 +116,26 @@ export function Examples({ onNotify }: ExamplesProps) {
           columnLabels={COLUMN_LABELS}
           defaultGrouping={["category"]}
           defaultSorting={[{ id: "createdAt", desc: false }]}
+          onNotify={onNotify}
+        />
+      </ExampleFrame>
+
+      <ExampleFrame
+        title="Tablo ayarları"
+        description="Toolbar'daki ayarlar düğmesiyle kolonları seç/sırala/yeniden adlandır, koşullu biçimlendirme, sayı biçimi ve hücre renkleri ver, ayarları JSON olarak paylaş ya da kendi verini yükle."
+        code={SETTINGS_CODE}
+      >
+        <DataTable
+          data={previewRows}
+          title="Tablo ayarları"
+          excludeColumns={["id"]}
+          columnLabels={COLUMN_LABELS}
+          valueMappers={VALUE_MAPPERS}
+          defaultGrouping={["category"]}
+          aggregate={{ total: "sum", quantity: "sum" }}
+          enableSettingsPanel
+          enableDataImport
+          defaultSettings={SETTINGS_EXAMPLE_DEFAULTS}
           onNotify={onNotify}
         />
       </ExampleFrame>

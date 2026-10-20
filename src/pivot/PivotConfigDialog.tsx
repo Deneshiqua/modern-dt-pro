@@ -1,23 +1,13 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import {
-  ArrowDownTrayIcon,
-  CheckCircleIcon,
-  ClipboardDocumentIcon,
-  DocumentArrowUpIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+import { useCallback, useMemo, type ReactNode } from "react";
 import clsx from "clsx";
 
-import { Button } from "../ui";
 import type { DataTablePivotConfig, DataTablePivotValue } from "../types";
-import { buildExportFilename } from "../utils/exportTable";
 import { describeCondition, formatStyle } from "./PivotConditionsDialog";
 import { describePivotNumberFormat, hasPivotNumberFormat } from "./pivotNumberFormat";
 import { PIVOT_CELL_KINDS, hasPivotCellStyles, pivotColorStyle } from "./pivotCellStyles";
 import { PIVOT_AGGREGATE_LABELS } from "./PivotFieldChooser";
 import type { PivotField } from "./pivotEngine";
-import { JsonEditor } from "./JsonEditor";
+import { ConfigJsonPanel, type ConfigJsonParseResult } from "./ConfigJsonPanel";
 import {
   buildPivotConfigSchema,
   parsePivotConfigJson,
@@ -27,7 +17,6 @@ import {
 } from "./pivotValidation";
 
 type Config = DataTablePivotConfig<any>;
-type Tab = "summary" | "json";
 
 const TOTAL_LABELS: { key: "showRowTotals" | "showColumnTotals" | "showRowGrandTotals" | "showColumnGrandTotals"; label: string }[] = [
   { key: "showRowTotals", label: "Satır ara toplamları" },
@@ -56,169 +45,30 @@ export function PivotConfigPanel({
   onApply,
   onNotify,
 }: PivotConfigButtonProps & { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("summary");
   const currentJson = useMemo(() => toJson(config), [config]);
-  const [text, setText] = useState(currentJson);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  // Her acilista guncel ayarlarla basla
-  useEffect(() => {
-    if (open) {
-      setText(toJson(config));
-      setTab("summary");
-    }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const deferredText = useDeferredValue(text);
-  const parsed = useMemo(() => parsePivotConfigJson(deferredText), [deferredText]);
-  const fieldIssues = useMemo(
-    () => (parsed.ok ? validatePivotConfig({ ...parsed.config }, fields).filter((issue) => issue.level === "error") : []),
-    [parsed, fields],
-  );
-  const changed = text.trim() !== currentJson.trim();
   const schema = useMemo(() => buildPivotConfigSchema(fields.map((field) => field.id)), [fields]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      onNotify("success", "Yapılandırma panoya kopyalandı");
-    } catch {
-      onNotify("error", "Panoya kopyalanamadı");
-    }
-  };
-
-  const download = () => {
-    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = buildExportFilename("pivot-yapilandirma", "json");
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const loadFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setText(await file.text());
-    setTab("json");
-  };
+  const parse = useCallback((text: string): ConfigJsonParseResult<PivotShareableConfig> => {
+    const parsed = parsePivotConfigJson(text);
+    if (!parsed.ok) return parsed;
+    const warnings = validatePivotConfig({ ...parsed.config }, fields)
+      .filter((issue) => issue.level === "error")
+      .map((issue) => issue.message);
+    return { ok: true, value: parsed.config, warnings };
+  }, [fields]);
 
   return (
-    <>
-      <div className="dark:border-dark-500 flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-2.5">
-        <p className="dark:text-dark-300 text-xs text-gray-500">Tüm pivot ayarlarının özeti ve paylaşılabilir JSON hali.</p>
-        <div role="tablist" className="dark:border-dark-450 inline-flex rounded-md border border-gray-300 p-0.5">
-          {(["summary", "json"] as const).map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={clsx(
-                "rounded px-3 py-1 text-sm",
-                tab === id
-                  ? "bg-primary-600 font-medium text-white"
-                  : "dark:text-dark-100 dark:hover:bg-dark-600 text-gray-700 hover:bg-gray-100",
-              )}
-            >
-              {id === "summary" ? "Özet" : "JSON"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {tab === "summary" ? (
-        <ConfigSummary config={config} fields={fields} />
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outlined" className="h-8 gap-1.5 px-3 text-sm" onClick={() => void copy()}>
-              <ClipboardDocumentIcon className="size-4" />
-              Kopyala
-            </Button>
-            <Button variant="outlined" className="h-8 gap-1.5 px-3 text-sm" onClick={download}>
-              <ArrowDownTrayIcon className="size-4" />
-              İndir
-            </Button>
-            <Button variant="outlined" className="h-8 gap-1.5 px-3 text-sm" onClick={() => fileRef.current?.click()}>
-              <DocumentArrowUpIcon className="size-4" />
-              Dosyadan yükle
-            </Button>
-            <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={loadFile} />
-            {changed ? (
-              <button
-                type="button"
-                className="text-primary-600 dark:text-primary-400 ml-auto text-xs hover:underline"
-                onClick={() => setText(currentJson)}
-              >
-                Değişiklikleri geri al
-              </button>
-            ) : null}
-          </div>
-          <JsonEditor
-            value={text}
-            onChange={setText}
-            ariaLabel="Yapılandırma JSON"
-            invalid={!parsed.ok}
-            schema={schema}
-          />
-          <div role="status" aria-live="polite" className="max-h-28 overflow-y-auto text-sm">
-            {!parsed.ok ? (
-              <ul className="flex flex-col gap-1 rounded-md bg-red-50 px-3 py-2 text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                {parsed.errors.map((error) => (
-                  <li key={error} className="flex items-start gap-2">
-                    <ExclamationCircleIcon className="mt-0.5 size-4 shrink-0" />
-                    {error}
-                  </li>
-                ))}
-              </ul>
-            ) : fieldIssues.length > 0 ? (
-              <ul className="flex flex-col gap-1 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
-                {fieldIssues.map((issue) => (
-                  <li key={issue.message} className="flex items-start gap-2">
-                    <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
-                    {issue.message}
-                  </li>
-                ))}
-              </ul>
-            ) : changed ? (
-              <p className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                <CheckCircleIcon className="size-4" />
-                Yapılandırma geçerli; uygulamaya hazır.
-              </p>
-            ) : (
-              <p className="dark:text-dark-300 text-xs text-gray-500">
-                Düzenleyip "Uygula" ile tabloya aktarabilir ya da dosya olarak saklayıp başka bir veride yükleyebilirsiniz.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="dark:border-dark-500 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
-        <Button variant="flat" className="h-9 px-3 text-sm" onClick={onClose}>
-          Kapat
-        </Button>
-        {tab === "json" ? (
-          <Button
-            color="primary"
-            className="h-9 px-5 text-sm"
-            disabled={!parsed.ok || !changed || deferredText !== text}
-            onClick={() => {
-              if (!parsed.ok) return;
-              onApply(parsed.config);
-              onNotify("success", "Yapılandırma uygulandı");
-              onClose();
-            }}
-          >
-            Uygula
-          </Button>
-        ) : null}
-      </div>
-    </>
+    <ConfigJsonPanel
+      open={open}
+      onClose={onClose}
+      currentJson={currentJson}
+      parse={parse}
+      schema={schema}
+      description="Tüm pivot ayarlarının özeti ve paylaşılabilir JSON hali."
+      summary={<ConfigSummary config={config} fields={fields} />}
+      downloadName="pivot-yapilandirma"
+      onApply={onApply}
+      onNotify={onNotify}
+    />
   );
 }
 
@@ -400,7 +250,7 @@ function ConfigSummary({ config, fields }: { config: Config; fields: PivotField[
   );
 }
 
-function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
+export function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <span className="dark:text-dark-300 text-xs font-medium text-gray-500">{label}</span>

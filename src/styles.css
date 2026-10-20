@@ -191,6 +191,12 @@
   margin-right: -8px;
 }
 
+/* Tek scroll yuzeyinde kaydirma cubugu icin pay gerekmez; negatif bosluk 8px'lik yatay tasma yaratir */
+.dtp-grid-horizontal .dtp-table-scroll .dtp-th:last-child,
+.dtp-grid-horizontal .dtp-table-scroll .dtp-td:last-child {
+  margin-right: 0;
+}
+
 .dtp-table-scroll .dtp-empty-cell {
   grid-column: 1 / -1;
 }

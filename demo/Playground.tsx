@@ -18,7 +18,13 @@ const playgroundRowClassName = (row: DemoRow) => (row.status === 0 ? "pg-row-mut
 const playgroundRowStyle = (row: DemoRow) =>
   row.total >= 2000 ? { backgroundColor: "rgba(245, 158, 11, 0.16)" } : undefined;
 
-function buildPlaygroundCode(options: { title: string; sql: boolean; doubleClick: boolean; rowStyling: boolean }) {
+function buildPlaygroundCode(options: {
+  title: string;
+  sql: boolean;
+  doubleClick: boolean;
+  rowStyling: boolean;
+  settingsPanel: boolean;
+}) {
   const lines = [
     'import { DataTable } from "modern-dt-pro";',
     "",
@@ -43,6 +49,7 @@ function buildPlaygroundCode(options: { title: string; sql: boolean; doubleClick
   ];
 
   if (options.sql) lines.push("  sqlQuery={SAMPLE_SQL}");
+  if (options.settingsPanel) lines.push("  enableSettingsPanel", "  enableDataImport");
   if (options.doubleClick) {
     lines.push("  onRowDoubleClick={(row) => onNotify(\"success\", `${row.code} · ${row.name}`)}");
   }
@@ -84,9 +91,10 @@ export function Playground({ onNotify }: PlaygroundProps) {
   const [sql, setSql] = useState(false);
   const [doubleClick, setDoubleClick] = useState(false);
   const [rowStyling, setRowStyling] = useState(false);
+  const [settingsPanel, setSettingsPanel] = useState(true);
   const [selectedCount, setSelectedCount] = useState(0);
 
-  const code = buildPlaygroundCode({ title, sql, doubleClick, rowStyling });
+  const code = buildPlaygroundCode({ title, sql, doubleClick, rowStyling, settingsPanel });
 
   const copyCode = async () => {
     try {
@@ -120,6 +128,9 @@ export function Playground({ onNotify }: PlaygroundProps) {
         <div className="pg-preview-toolbar">
           <Chip active={sql} onClick={() => setSql((value) => !value)}>
             SQL
+          </Chip>
+          <Chip active={settingsPanel} onClick={() => setSettingsPanel((value) => !value)}>
+            Tablo ayarları
           </Chip>
           <Chip active={doubleClick} onClick={() => setDoubleClick((value) => !value)}>
             Çift tıklama
@@ -161,6 +172,8 @@ export function Playground({ onNotify }: PlaygroundProps) {
               onRowDoubleClick={doubleClick ? (row) => onNotify("success", `${row.code} · ${row.name}`) : undefined}
               rowClassName={rowStyling ? playgroundRowClassName : undefined}
               rowStyle={rowStyling ? playgroundRowStyle : undefined}
+              enableSettingsPanel={settingsPanel}
+              enableDataImport={settingsPanel}
               onNotify={onNotify}
               onSelectionChange={(selected) => setSelectedCount(selected.length)}
               enableSorting={false}

@@ -43,7 +43,10 @@ export function PivotSettingsDialog({
   tab,
   onTabChange,
   sections,
+  title = "Pivot Ayarları",
 }: {
+  /** Pencere basligi; normal tablo "Tablo Ayarları" kullanir. */
+  title?: string;
   open: boolean;
   onClose: () => void;
   tab: PivotSettingsTab;
@@ -90,7 +93,7 @@ export function PivotSettingsDialog({
               <div className="dark:border-dark-500 flex flex-col border-b border-gray-200">
                 <div className="flex items-center gap-3 px-5 pt-3.5 pb-2">
                   <DialogTitle className="dark:text-dark-50 min-w-0 flex-1 text-lg font-semibold text-gray-900">
-                    Pivot Ayarları
+                    {title}
                   </DialogTitle>
                   <MaximizeButton maximized={resizable.maximized} onClick={resizable.toggleMaximized} />
                   <button
@@ -103,7 +106,7 @@ export function PivotSettingsDialog({
                     <XMarkIcon className="size-5" />
                   </button>
                 </div>
-                <div role="tablist" aria-label="Pivot ayarları" className="flex gap-1 overflow-x-auto px-3">
+                <div role="tablist" aria-label={title} className="flex gap-1 overflow-x-auto px-3">
                   {ordered.map((section) => {
                     const label = PIVOT_SETTINGS_TABS.find((item) => item.id === section.id)?.label ?? section.id;
                     const selected = section.id === active;

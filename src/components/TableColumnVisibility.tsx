@@ -32,10 +32,20 @@ export function TableColumnVisibility({
   header: string;
 }) {
   const [columnSearch, setColumnSearch] = useState("");
-  const { columnVisibility } = table.getState();
+  const { columnVisibility, columnOrder } = table.getState();
+  // table nesnesi sabit kalir; kolon tanimlari (yeni veri, yeniden adlandirma) degisince liste yenilenmeli
+  const columnDefs = table.options.columns;
 
   const filteredColumns = useMemo(() => {
-    const columns = table.getAllLeafColumns();
+    const leafColumns = table.getAllLeafColumns();
+    // Tablo Ayarlari'ndaki kolon sirasi listeye de yansir
+    const rank = (id: string) => {
+      const index = columnOrder.indexOf(id);
+      return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    const columns = columnOrder.length > 0
+      ? [...leafColumns].sort((a, b) => rank(a.id) - rank(b.id))
+      : leafColumns;
     const query = columnSearch.trim().toLocaleLowerCase("tr-TR");
     if (!query) {
       return columns;
@@ -46,7 +56,7 @@ export function TableColumnVisibility({
       const caption = getColumnCaption(column).toLocaleLowerCase("tr-TR");
       return columnId.includes(query) || caption.includes(query);
     });
-  }, [table, columnSearch, columnVisibility]);
+  }, [table, columnSearch, columnVisibility, columnOrder, columnDefs]);
 
   return (
     <Popover className="relative w-full">

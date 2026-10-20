@@ -18,7 +18,7 @@ export type PivotJsonParseResult =
   | { ok: true; rows: Record<string, unknown>[]; note?: string }
   | { ok: false; error: string };
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
@@ -107,7 +107,7 @@ export function findJsonErrorOffset(text: string): number | undefined {
 }
 
 /** Hata konumunu "satir 3, sutun 11: beklenmeyen '}'" bicimine cevirir. */
-function describeJsonError(text: string): string {
+export function describeJsonError(text: string): string {
   const offset = findJsonErrorOffset(text);
   if (offset === undefined) return "Geçersiz JSON: metin eksik ya da hatalı görünüyor.";
   const before = text.slice(0, offset);
@@ -229,10 +229,10 @@ export function validatePivotConfig(
 // Yapilandirma (alan secici + kosullu bicimlendirme) disa/ice aktarma
 
 const AGGREGATE_IDS: DataTablePivotAggregate[] = ["sum", "avg", "count", "min", "max"];
-const OPERATOR_IDS: DataTablePivotConditionOperator[] = [
+export const OPERATOR_IDS: DataTablePivotConditionOperator[] = [
   "lt", "lte", "gt", "gte", "eq", "neq", "between", "notBetween", "empty", "notEmpty",
 ];
-const APPLY_TO_IDS = ["all", "cells", "totals"] as const;
+export const APPLY_TO_IDS = ["all", "cells", "totals"] as const;
 const TOTAL_KEYS = ["showRowTotals", "showColumnTotals", "showRowGrandTotals", "showColumnGrandTotals"] as const;
 
 /** Paylasilabilir yapilandirma: acik/kapali dugumler gibi anlik gorunum durumu disarida birakilir. */
@@ -278,10 +278,10 @@ export type PivotConfigParseResult =
   | { ok: true; config: PivotShareableConfig }
   | { ok: false; errors: string[] };
 
-const isStringArray = (value: unknown): value is string[] =>
+export const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
-const isFiniteOrUndefined = (value: unknown) =>
+export const isFiniteOrUndefined = (value: unknown) =>
   value === undefined || (typeof value === "number" && Number.isFinite(value));
 
 const NUMBER_FORMAT_ENUMS = {
@@ -292,7 +292,7 @@ const NUMBER_FORMAT_ENUMS = {
 } as const;
 
 /** Sayi bicimi nesnesini dogrular; hatalari `path` ile errors'a ekler. */
-function readNumberFormat(value: unknown, path: string, errors: string[]): DataTablePivotNumberFormat | undefined {
+export function readNumberFormat(value: unknown, path: string, errors: string[]): DataTablePivotNumberFormat | undefined {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
     errors.push(`${path} nesne olmalı, ör. { "decimalPlaces": 2, "currencySymbol": "₺" }.`);
@@ -336,7 +336,7 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const CELL_STYLE_KINDS = ["cells", "alternateCells", "totals", "grandTotals"] as const;
 
 /** Hucre renklerini dogrular: { cells|totals|grandTotals: { backgroundColor, color } }. */
-function readCellStyles(value: unknown, path: string, errors: string[]): DataTablePivotCellStyles | undefined {
+export function readCellStyles(value: unknown, path: string, errors: string[]): DataTablePivotCellStyles | undefined {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
     errors.push(`${path} nesne olmalı, ör. { "totals": { "backgroundColor": "#f3f4f6" } }.`);
@@ -524,45 +524,66 @@ export const PIVOT_DATA_SCHEMA = {
   ],
 };
 
+/** Ortak sema parcalari (pivot ve tablo yapilandirmasi paylasir). */
+export const COLOR_SCHEMA = { type: "string", pattern: "^#[0-9a-fA-F]{6}$", description: "Onaltılık renk, ör. #dcfce7" };
+
+const COLOR_STYLE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: { backgroundColor: COLOR_SCHEMA, color: COLOR_SCHEMA },
+};
+
+export const cellStylesSchema = (description: string, alternateDescription: string) => ({
+  type: "object",
+  description,
+  additionalProperties: false,
+  properties: {
+    cells: COLOR_STYLE_SCHEMA,
+    alternateCells: { ...COLOR_STYLE_SCHEMA, description: alternateDescription },
+    totals: COLOR_STYLE_SCHEMA,
+    grandTotals: COLOR_STYLE_SCHEMA,
+  },
+});
+
+export const NUMBER_FORMAT_SCHEMA = {
+  type: "object",
+  description: "Sayı biçimi",
+  additionalProperties: false,
+  properties: {
+    textAlign: { enum: NUMBER_FORMAT_ENUMS.textAlign, description: "Hücre hizalaması" },
+    thousandsSeparator: { enum: NUMBER_FORMAT_ENUMS.thousandsSeparator, description: "Binlik ayırıcı; \"\" = yok" },
+    decimalSeparator: { enum: NUMBER_FORMAT_ENUMS.decimalSeparator, description: "Ondalık ayırıcı" },
+    decimalPlaces: { type: "integer", minimum: 0, maximum: 10, description: "Sabit ondalık basamak; verilmezse en fazla 2" },
+    currencySymbol: { type: "string", description: "Para birimi simgesi, ör. ₺" },
+    currencyAlign: { enum: NUMBER_FORMAT_ENUMS.currencyAlign, description: "Simgenin konumu" },
+    nullValue: { type: "string", description: "Boş hücrede gösterilecek metin" },
+    isPercent: { type: "boolean", description: "Değeri 100 ile çarpıp % ekler" },
+  },
+};
+
+export const CONDITION_FORMAT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    backgroundColor: COLOR_SCHEMA,
+    color: COLOR_SCHEMA,
+    fontWeight: { enum: ["normal", "bold"] },
+    fontStyle: { enum: ["normal", "italic"] },
+  },
+};
+
 /** Yapilandirma semasi; alan adlari verideki alanlarla sinirlanir. */
 export function buildPivotConfigSchema(fieldIds: string[]) {
   const field = fieldIds.length > 0
     ? { type: "string", enum: fieldIds, description: "Verideki alan adı" }
     : { type: "string" };
   const fieldList = (description: string) => ({ type: "array", description, uniqueItems: true, items: field });
-  const color = { type: "string", pattern: "^#[0-9a-fA-F]{6}$", description: "Onaltılık renk, ör. #dcfce7" };
   const aggregate = { enum: AGGREGATE_IDS, description: "sum: Toplam, avg: Ortalama, count: Adet, min: En küçük, max: En büyük" };
-  const colorStyle = {
-    type: "object",
-    additionalProperties: false,
-    properties: { backgroundColor: color, color },
-  };
-  const cellStyles = {
-    type: "object",
-    description: "Hücre renkleri: veri hücreleri (1. ve 2. renk), ara toplamlar, genel toplamlar",
-    additionalProperties: false,
-    properties: {
-      cells: colorStyle,
-      alternateCells: { ...colorStyle, description: "Veri hücreleri 2. renk: sütunlar sırayla 1. ve 2. renkle boyanır" },
-      totals: colorStyle,
-      grandTotals: colorStyle,
-    },
-  };
-  const numberFormat = {
-    type: "object",
-    description: "Sayı biçimi",
-    additionalProperties: false,
-    properties: {
-      textAlign: { enum: NUMBER_FORMAT_ENUMS.textAlign, description: "Hücre hizalaması" },
-      thousandsSeparator: { enum: NUMBER_FORMAT_ENUMS.thousandsSeparator, description: "Binlik ayırıcı; \"\" = yok" },
-      decimalSeparator: { enum: NUMBER_FORMAT_ENUMS.decimalSeparator, description: "Ondalık ayırıcı" },
-      decimalPlaces: { type: "integer", minimum: 0, maximum: 10, description: "Sabit ondalık basamak; verilmezse en fazla 2" },
-      currencySymbol: { type: "string", description: "Para birimi simgesi, ör. ₺" },
-      currencyAlign: { enum: NUMBER_FORMAT_ENUMS.currencyAlign, description: "Simgenin konumu" },
-      nullValue: { type: "string", description: "Boş hücrede gösterilecek metin" },
-      isPercent: { type: "boolean", description: "Değeri 100 ile çarpıp % ekler" },
-    },
-  };
+  const cellStyles = cellStylesSchema(
+    "Hücre renkleri: veri hücreleri (1. ve 2. renk), ara toplamlar, genel toplamlar",
+    "Veri hücreleri 2. renk: sütunlar sırayla 1. ve 2. renkle boyanır",
+  );
+  const numberFormat = NUMBER_FORMAT_SCHEMA;
   return {
     type: "object",
     additionalProperties: false,
@@ -606,16 +627,7 @@ export function buildPivotConfigSchema(fieldIds: string[]) {
             value2: { type: "number" },
             applyTo: { enum: APPLY_TO_IDS, description: "all: Tüm hücreler, cells: Veri hücreleri, totals: Toplamlar" },
             enabled: { type: "boolean" },
-            format: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                backgroundColor: color,
-                color,
-                fontWeight: { enum: ["normal", "bold"] },
-                fontStyle: { enum: ["normal", "italic"] },
-              },
-            },
+            format: CONDITION_FORMAT_SCHEMA,
           },
         },
       },

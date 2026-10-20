@@ -9,6 +9,7 @@ import {
   hasPivotNumberFormat,
   pivotNumberAlignStyle,
 } from "./pivotNumberFormat";
+import { SETTINGS_TERMS, type SettingsPanelMode } from "./settingsTerms";
 
 type Format = DataTablePivotNumberFormat;
 type Draft = { defaults: Format; perValue: Format[] };
@@ -39,6 +40,8 @@ type PivotNumberFormatButtonProps = {
   values: DataTablePivotValue[];
   valueLabel: (value: DataTablePivotValue) => string;
   onApply: (numberFormat: Format | undefined, perValue: (Format | undefined)[]) => void;
+  /** Metinler: pivot veri alanlari ya da tablo kolonlari. Varsayilan: "pivot". */
+  mode?: SettingsPanelMode;
 };
 
 
@@ -55,7 +58,9 @@ export function PivotNumberFormatPanel({
   values,
   valueLabel,
   onApply,
+  mode = "pivot",
 }: PivotNumberFormatButtonProps & { open: boolean; onClose: () => void }) {
+  const terms = SETTINGS_TERMS[mode];
   const [draft, setDraft] = useState<Draft>({ defaults: {}, perValue: [] });
   const [target, setTarget] = useState<Target>("");
 
@@ -116,9 +121,9 @@ export function PivotNumberFormatPanel({
     <>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <Field label="Hangi değer?">
+        <Field label={terms.which}>
           <select className={FIELD_CLASS} value={target} onChange={(event) => setTarget(event.target.value)}>
-            <option value="">Tüm değerler (varsayılan biçim)</option>
+            <option value="">{terms.allFormats}</option>
             {values.map((value, i) => (
               <option key={`${value.field}-${i}`} value={String(i)}>
                 {valueLabel(value)}{hasPivotNumberFormat(draft.perValue[i]) ? " • özel biçim" : ""}
@@ -127,9 +132,7 @@ export function PivotNumberFormatPanel({
           </select>
         </Field>
         <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
-          {isValue
-            ? "Bu veri alanında değiştirmediğiniz ayarlar varsayılan biçimden gelir."
-            : "Tüm veri alanlarına uygulanır; bir veri alanını seçerek ona özel biçim verebilirsiniz."}
+          {isValue ? terms.ownFormatHint : terms.defaultFormatHint}
         </p>
 
         <div className="dark:border-dark-500 mt-5 grid gap-x-4 gap-y-4 border-t border-gray-200 pt-5 sm:grid-cols-2">

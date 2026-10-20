@@ -5,11 +5,11 @@ import { Button } from "../ui";
 import type { DataTablePivotCellStyles, DataTablePivotColorStyle, DataTablePivotValue } from "../types";
 import { BACKGROUND_PRESETS, ColorPicker, TEXT_PRESETS } from "./PivotConditionsDialog";
 import {
-  PIVOT_CELL_KINDS,
   cleanPivotCellStyles,
   hasPivotCellStyles,
   pivotColorStyle,
 } from "./pivotCellStyles";
+import { SETTINGS_TERMS, type SettingsPanelMode } from "./settingsTerms";
 
 type Styles = DataTablePivotCellStyles;
 /** Duzenlenebilen renk anahtari: uc hucre turu + veri hucrelerinin 2. rengi */
@@ -32,6 +32,8 @@ type PivotCellStylesButtonProps = {
   values: DataTablePivotValue[];
   valueLabel: (value: DataTablePivotValue) => string;
   onApply: (cellStyles: Styles | undefined, perValue: (Styles | undefined)[]) => void;
+  /** Metinler: pivot veri alanlari ya da tablo kolonlari. Varsayilan: "pivot". */
+  mode?: SettingsPanelMode;
 };
 
 
@@ -42,7 +44,9 @@ export function PivotCellStylesPanel({
   values,
   valueLabel,
   onApply,
+  mode = "pivot",
 }: PivotCellStylesButtonProps & { open: boolean; onClose: () => void }) {
+  const terms = SETTINGS_TERMS[mode];
   const [draft, setDraft] = useState<Draft>({ defaults: {}, perValue: [] });
   /** "" = tum degerler, "0", "1"... = veri alani sirasi */
   const [target, setTarget] = useState("");
@@ -98,9 +102,9 @@ export function PivotCellStylesPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         <label className="flex flex-col gap-1">
-          <span className="dark:text-dark-300 text-xs font-medium text-gray-600">Hangi değer?</span>
+          <span className="dark:text-dark-300 text-xs font-medium text-gray-600">{terms.which}</span>
           <select className={FIELD_CLASS} value={target} onChange={(event) => setTarget(event.target.value)}>
-            <option value="">Tüm değerler (varsayılan renkler)</option>
+            <option value="">{terms.allColors}</option>
             {values.map((value, i) => (
               <option key={`${value.field}-${i}`} value={String(i)}>
                 {valueLabel(value)}{hasPivotCellStyles(draft.perValue[i]) ? " • özel renk" : ""}
@@ -109,20 +113,18 @@ export function PivotCellStylesPanel({
           </select>
         </label>
         <p className="dark:text-dark-300 mt-1.5 text-xs text-gray-500">
-          {isValue
-            ? "Bu veri alanında seçmediğiniz renkler varsayılandan gelir."
-            : "Tüm veri alanlarına uygulanır. Koşullu biçimlendirme bu renklerin üstüne uygulanır."}
+          {isValue ? terms.ownColorHint : terms.defaultColorHint}
         </p>
 
         <div className="dark:border-dark-500 mt-5 border-t border-gray-200 pt-3">
-          {PIVOT_CELL_KINDS.map((kind) => (
+          {terms.cellKinds.map((kind) => (
             <div
               key={kind.id}
               className="dark:border-dark-500 flex flex-col gap-2 border-b border-gray-200 py-3 last:border-b-0"
             >
               <ColorRow
                 title={kind.label}
-                hint={kind.id === "cells" ? "1. renk — verdiğiniz sırayla ilk sütun" : kind.hint}
+                hint={kind.id === "cells" ? terms.cellsHint : kind.hint}
                 styleKey={kind.id}
                 own={own}
                 preview={effective(kind.id)}
@@ -132,7 +134,7 @@ export function PivotCellStylesPanel({
               {kind.id === "cells" ? (
                 <ColorRow
                   title=""
-                  hint="2. renk — sütunlar sırayla 1. ve 2. renkle boyanır; boş bırakılırsa hep 1. renk"
+                  hint={terms.alternateHint}
                   styleKey="alternateCells"
                   own={own}
                   preview={hasAlternate ? effective("alternateCells") : effective("cells")}
@@ -152,7 +154,7 @@ export function PivotCellStylesPanel({
           disabled={!hasPivotCellStyles(own)}
           onClick={resetTarget}
         >
-          {isValue ? "Bu alanın renklerini sıfırla" : "Varsayılan renkleri sıfırla"}
+          {isValue ? terms.resetOwnColors : "Varsayılan renkleri sıfırla"}
         </Button>
         <Button variant="flat" className="h-9 px-3 text-sm" onClick={onClose}>
           Vazgeç

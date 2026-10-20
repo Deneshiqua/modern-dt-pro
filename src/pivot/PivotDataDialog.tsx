@@ -10,6 +10,7 @@ import { formatColumnHeader } from "../utils/formatCellValue";
 import { detectPivotFields } from "./pivotEngine";
 import { PIVOT_DATA_SCHEMA, parsePivotJson } from "./pivotValidation";
 import { JsonEditor } from "./JsonEditor";
+import type { SettingsPanelMode } from "./settingsTerms";
 
 const EXAMPLE = `[
   { "bolge": "Ege", "sehir": "İzmir", "tarih": "2025-03-14", "tutar": 1250 },
@@ -23,7 +24,10 @@ export function PivotDataPanel({
   currentData,
   onClose,
   onApply,
+  mode = "pivot",
 }: {
+  /** Metinler: pivot ayarlari sifirlanir / tablo ayarlari korunur. Varsayilan: "pivot". */
+  mode?: SettingsPanelMode;
   open: boolean;
   currentData: readonly Record<string, unknown>[];
   onClose: () => void;
@@ -165,7 +169,9 @@ export function PivotDataPanel({
         <p className="dark:text-dark-300 mr-auto text-xs text-gray-500">
           {isCurrent
             ? "Tablodaki mevcut veri gösteriliyor; değiştirince uygulayabilirsiniz."
-            : "Uygulayınca mevcut pivot ayarları sıfırlanır."}
+            : mode === "table"
+              ? "Uygulayınca tablo bu veriyle yeniden oluşturulur; tablo ayarları korunur."
+              : "Uygulayınca mevcut pivot ayarları sıfırlanır."}
         </p>
         <Button variant="flat" className="h-9 px-3 text-sm" onClick={onClose}>
           Vazgeç
@@ -178,7 +184,7 @@ export function PivotDataPanel({
             if (result?.ok) onApply(result.rows);
           }}
         >
-          Uygula ve alanları seç
+          {mode === "table" ? "Uygula ve kolonları gör" : "Uygula ve alanları seç"}
         </Button>
       </div>
     </>

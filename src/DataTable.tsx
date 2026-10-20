@@ -23,7 +23,7 @@ import {
     useReactTable
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
+import { AdjustmentsVerticalIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, Bars3Icon, BarsArrowDownIcon, BarsArrowUpIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ClipboardDocumentIcon, CommandLineIcon, FunnelIcon, MapPinIcon, TrashIcon, XMarkIcon as XMarkOutlineIcon } from "@heroicons/react/24/outline";
 import { Button, Card, PopoverButton, TBody, THead, Table, Td, Th, Tr } from "./ui";
 import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CSSProperties, DragEvent, UIEvent, forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardedRef, type MouseEvent as ReactMouseEvent, type ReactElement, type RefAttributes } from "react";
@@ -49,6 +49,8 @@ import type {
     DataTableHandle,
     DataTableLoadOptions,
     DataTableProps,
+    DataTableSettings,
+    DataTableSettingsTab,
     ExportMode,
     ExportOptions,
     ExportScope,
@@ -101,6 +103,20 @@ import {
 } from "./utils/exportTable";
 import clsx from "clsx";
 import { PivotDataTable } from "./pivot/PivotDataTable";
+import { formatPivotNumber } from "./pivot/pivotNumberFormat";
+import { TableSettingsDialog } from "./settings/TableSettingsDialog";
+import {
+    hasActiveTableConditions,
+    loadPersistedTableSettings,
+    resolveColumnNumberFormat,
+    resolveColumnOrder,
+    resolveTableCellColor,
+    resolveTableConditionStyle,
+    resolveTableRowConditionStyle,
+    savePersistedTableSettings,
+    toNumberOrNull,
+    type TableCellKind,
+} from "./settings/tableSettings";
 
 // ----------------------------------------------------------------------
 
@@ -111,6 +127,8 @@ const AUTOFIT_SAMPLE_LIMIT = 300;
 const EMPTY_GROUPING: GroupingState = [];
 const EMPTY_EXPANDED: ExpandedState = {};
 const EMPTY_DATA: never[] = [];
+const EMPTY_SETTINGS: DataTableSettings = {};
+const TEXT_ALIGN_CLASS = { left: "text-left", center: "text-center", right: "text-right" } as const;
 const DEFAULT_ROW_HEIGHT = 48;
 const DENSE_ROW_HEIGHT = 40;
 const VIRTUAL_OVERSCAN = 10;
@@ -187,6 +205,13 @@ function DataTableInner<T extends Record<string, any>>({
     onRowDoubleClick,
     rowClassName,
     rowStyle,
+    enableSettingsPanel = false,
+    settings: controlledSettings,
+    defaultSettings,
+    onSettingsChange,
+    settingsTabs,
+    enableDataImport = false,
+    onDataImport,
     onNotify,
     toolbarExtra,
 }: DataTableProps<T>, ref: ForwardedRef<DataTableHandle>) {
@@ -217,6 +242,30 @@ function DataTableInner<T extends Record<string, any>>({
         fitColumns: defaultViewSettings?.fitColumns ?? fitColumns,
         ...loadPersistedViewSettings(stateStorageKey),
     }));
+    // Tablo Ayarlari (Alan Secici, sayi bicimi, hucre renkleri, kosullar); kontrollu ya da kendi durumu
+    const [internalSettings, setInternalSettings] = useState<DataTableSettings>(
+        () => loadPersistedTableSettings(stateStorageKey) ?? defaultSettings ?? EMPTY_SETTINGS,
+    );
+    const isSettingsControlled = controlledSettings !== undefined;
+    const tableSettings = controlledSettings ?? internalSettings;
+    // Ayarlar yalnizca kullanilan tablolarda guncellenir/saklanir; digerlerinin davranisi degismez
+    const settingsActive = enableSettingsPanel || isSettingsControlled || defaultSettings !== undefined;
+    const tableSettingsRef = useRef(tableSettings);
+    tableSettingsRef.current = tableSettings;
+    const updateTableSettings = useCallback((next: DataTableSettings) => {
+        if (!isSettingsControlled) setInternalSettings(next);
+        onSettingsChange?.(next);
+    }, [isSettingsControlled, onSettingsChange]);
+    useEffect(() => {
+        if (settingsActive && !isSettingsControlled) savePersistedTableSettings(stateStorageKey, internalSettings);
+    }, [settingsActive, isSettingsControlled, stateStorageKey, internalSettings]);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsTab, setSettingsTab] = useState<DataTableSettingsTab>("fieldChooser");
+
+    // "Veri" sekmesiyle yuklenen liste; data prop'u degisirse ona geri donulur
+    const [importedData, setImportedData] = useState<T[] | null>(null);
+    useEffect(() => setImportedData(null), [data]);
+
     const rowSelectionEnabled = viewSettings.rowSelection;
     const sortingEnabled = viewSettings.sorting;
     const columnFilterEnabled = viewSettings.columnFilter;
@@ -304,7 +353,7 @@ function DataTableInner<T extends Record<string, any>>({
         ? (isRemoteGrouping && remoteGroups.length > 0
             ? remoteGroupView.rows
             : remoteRows)
-        : (data ?? EMPTY_DATA);
+        : (importedData ?? data ?? EMPTY_DATA);
     const effectiveTotalRowCount = hasDataSource ? remoteTotalCount : totalRowCount;
     const effectivePageRowCount = isRemoteGrouping
         && grouping.length > 0
@@ -637,26 +686,38 @@ function DataTableInner<T extends Record<string, any>>({
             const customHeaderTemplate = headerTemplate?.[templateKey];
             const columnAggregate = aggregate?.[templateKey];
             const resolvedAggregationFn = resolveAggregationFn(columnAggregate);
+            // Tablo Ayarlari > Sayi Bicimi; ayar yoksa tablonun kendi bicimi kullanilir
+            const numberFormat = isNumeric ? resolveColumnNumberFormat(tableSettings, key) : undefined;
+            const alignClass = TEXT_ALIGN_CLASS[numberFormat?.textAlign ?? (isNumeric ? 'right' : 'left')];
+            const formatNumber = (value: unknown) =>
+                typeof value === 'number' || value === null || value === undefined
+                    ? formatPivotNumber(toNumberOrNull(value), numberFormat)
+                    : formatCellValue(value);
 
             return {
                 accessorKey: key,
                 id: key,
                 header: customHeaderTemplate
                     ? (context) => customHeaderTemplate(context)
-                    : columnLabels?.[key] || formatColumnHeader(key),
+                    : tableSettings.columnLabels?.[key] || columnLabels?.[key] || formatColumnHeader(key),
                 filterFn: columnFilter as FilterFn<T>,
                 cell: customCellTemplate ?? (({ getValue }) => {
                     const value = getValue();
                     // Önce valueMapper'a bak, yoksa normal formatCellValue kullan
                     let displayValue: string;
-                    if (columnValueMapper && (value !== null && value !== undefined)) {
-                        displayValue = columnValueMapper[value as string | number] ?? formatCellValue(value);
+                    const mappedValue = columnValueMapper && value !== null && value !== undefined
+                        ? columnValueMapper[value as string | number]
+                        : undefined;
+                    if (mappedValue !== undefined) {
+                        displayValue = mappedValue;
+                    } else if (numberFormat) {
+                        displayValue = formatNumber(value);
                     } else {
                         displayValue = formatCellValue(value);
                     }
 
                     return (
-                        <div className={isNumeric ? 'text-right text-sm' : 'text-left text-sm'}>
+                        <div className={`${alignClass} text-sm`}>
                             {displayValue}
                         </div>
                     );
@@ -667,7 +728,10 @@ function DataTableInner<T extends Record<string, any>>({
                         aggregatedCell: customGroupCellTemplate ?? (({ getValue }) => {
                             const value = getValue();
                             if (typeof value === 'number') {
-                                return <div className="text-right"><span className="font-semibold text-primary-600">{value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span></div>;
+                                const text = numberFormat
+                                    ? formatNumber(value)
+                                    : value.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+                                return <div className={numberFormat?.textAlign ? alignClass : "text-right"}><span className="font-semibold text-primary-600">{text}</span></div>;
                             }
                             return <div className="text-right"><span className="font-semibold text-primary-600">{String(value)}</span></div>;
                         }),
@@ -681,7 +745,8 @@ function DataTableInner<T extends Record<string, any>>({
                 enableColumnFilter: columnFilterEnabled || columnHeaderFilterEnabled,
                 enableResizing: columnResizingEnabled,
                 meta: {
-                    align: isNumeric ? 'right' : 'left'
+                    align: numberFormat?.textAlign ?? (isNumeric ? 'right' : 'left'),
+                    isNumeric,
                 }
             };
         });
@@ -734,9 +799,31 @@ function DataTableInner<T extends Record<string, any>>({
         }
 
         return dataColumns;
-    }, [effectiveData, excludeColumns, columnLabels, rowSelectionEnabled, visibleColumns, valueMappers, cellTemplate, grupCellTemplate, headerTemplate, aggregate, groupingEnabled, sortingEnabled, columnFilterEnabled, columnHeaderFilterEnabled, columnResizingEnabled]);
+    }, [effectiveData, excludeColumns, columnLabels, rowSelectionEnabled, visibleColumns, valueMappers, cellTemplate, grupCellTemplate, headerTemplate, aggregate, groupingEnabled, sortingEnabled, columnFilterEnabled, columnHeaderFilterEnabled, columnResizingEnabled, tableSettings.columnLabels, tableSettings.numberFormat, tableSettings.columnNumberFormats]);
 
-    const columns = providedColumns ?? generatedColumns;
+    // Tablo Ayarlari'ndaki kolon basliklari verilen TanStack kolonlarina da uygulanir
+    const labeledProvidedColumns = useMemo(() => {
+        const labels = tableSettings.columnLabels;
+        if (!providedColumns || !labels || Object.keys(labels).length === 0) return providedColumns;
+        return providedColumns.map((column) => {
+            const id = column.id ?? (column as { accessorKey?: string }).accessorKey;
+            return id && labels[id] ? { ...column, header: labels[id] } : column;
+        });
+    }, [providedColumns, tableSettings.columnLabels]);
+    const columns = labeledProvidedColumns ?? generatedColumns;
+    // Secim kolonu haric veri kolonlari (Tablo Ayarlari kolon sirasi ve gorunurluk icin)
+    const dataColumnIds = useMemo(
+        () => columns
+            .map((column) => column.id ?? (column as { accessorKey?: string }).accessorKey)
+            .filter((id): id is string => typeof id === "string" && !isSelectColumnId(id)),
+        [columns],
+    );
+    const columnOrderState = useMemo(
+        () => (tableSettings.columnOrder?.length
+            ? ["select", ...resolveColumnOrder(tableSettings.columnOrder, dataColumnIds)]
+            : []),
+        [tableSettings.columnOrder, dataColumnIds],
+    );
 
     // Initial column visibility state - visibleColumns varsa sadece onları göster
     const initialColumnVisibility = useMemo<VisibilityState>(() => {
@@ -800,6 +887,11 @@ function DataTableInner<T extends Record<string, any>>({
                     newVisibility[groupedColumn] = false;
                 });
 
+                // Tablo Ayarlari'nda gizlenen kolonlar
+                tableSettingsRef.current.hiddenColumns?.forEach((column) => {
+                    if (column in newVisibility) newVisibility[column] = false;
+                });
+
                 // Sadece gerçekten değişiklik varsa güncelle
                 const allKeys = new Set([...Object.keys(prev), ...Object.keys(newVisibility)]);
                 const hasChanged = Array.from(allKeys).some((key) => newVisibility[key] !== prev[key]);
@@ -833,6 +925,36 @@ function DataTableInner<T extends Record<string, any>>({
         previousGroupingRef.current = grouping;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialColumnVisibility, grouping]);
+
+    // Ayarlardaki gizli kolonlar disaridan (Alan Secici, Yapilandirma, kontrollu prop) degisince uygula
+    const hiddenColumnsKey = JSON.stringify(tableSettings.hiddenColumns ?? []);
+    const appliedHiddenColumnsKeyRef = useRef(hiddenColumnsKey);
+    useEffect(() => {
+        if (appliedHiddenColumnsKeyRef.current === hiddenColumnsKey) return;
+        appliedHiddenColumnsKeyRef.current = hiddenColumnsKey;
+        const hidden = new Set(tableSettings.hiddenColumns ?? []);
+        setColumnVisibility((prev) => {
+            const next = { ...prev };
+            dataColumnIds.forEach((column) => {
+                if (!grouping.includes(column)) next[column] = !hidden.has(column);
+            });
+            return next;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hiddenColumnsKey]);
+
+    // Toolbar kolon secicisi de ayni gorunurlugu kullanir; ayarlardaki gizli kolon listesi guncel tutulur
+    const handleColumnVisibilityChange: OnChangeFn<VisibilityState> = (updaterOrValue) => {
+        const next = typeof updaterOrValue === "function" ? updaterOrValue(columnVisibility) : updaterOrValue;
+        setColumnVisibility(next);
+        if (!settingsActive) return;
+        const hiddenColumns = dataColumnIds.filter((column) => next[column] === false && !grouping.includes(column));
+        const key = JSON.stringify(hiddenColumns);
+        if (key === hiddenColumnsKey) return;
+        appliedHiddenColumnsKeyRef.current = key;
+        const { hiddenColumns: _previous, ...rest } = tableSettings;
+        updateTableSettings(hiddenColumns.length > 0 ? { ...rest, hiddenColumns } : rest);
+    };
 
     const discoveredSearchExpr = useMemo(
         () => columns
@@ -1138,6 +1260,7 @@ function DataTableInner<T extends Record<string, any>>({
             columnFilters,
             globalFilter: searchEnabled ? deferredGlobalFilter : "",
             columnVisibility,
+            columnOrder: columnOrderState,
             grouping: groupingEnabled ? grouping : EMPTY_GROUPING,
             expanded,
             pagination,
@@ -1160,7 +1283,7 @@ function DataTableInner<T extends Record<string, any>>({
         onGlobalFilterChange: handleGlobalFilterChange,
         getFilteredRowModel: isManualFiltering ? undefined : getFilteredRowModel(),
         globalFilterFn: fuzzyFilter,
-        onColumnVisibilityChange: setColumnVisibility,
+        onColumnVisibilityChange: handleColumnVisibilityChange,
         onGroupingChange: groupingEnabled ? setGrouping : undefined,
         getGroupedRowModel: getGroupedRowModel(),
         onExpandedChange: setExpanded,
@@ -1354,8 +1477,10 @@ function DataTableInner<T extends Record<string, any>>({
                     // Olculer oran olarak kullanilir; grid tum genisligi bosluksuz doldurur
                     return `minmax(${MIN_COL_SIZE}px, ${column.getSize()}fr)`;
                 }
-                // Icerik olculeri piksel olarak korunur; tasan kisim yatay kaydirilir
-                return `${column.getSize()}px`;
+                // Icerik olculeri en az genislik olarak korunur; tasan kisim yatay kaydirilir.
+                // Kolonlar tablodan darsa kalan bosluk olculerle orantili dagitilir, sagda bos alan kalmaz.
+                const size = column.getSize();
+                return `minmax(${size}px, ${size}fr)`;
             }).join(" ");
         }
         const dataCount = rowSelectionEnabled
@@ -1515,6 +1640,88 @@ function DataTableInner<T extends Record<string, any>>({
         getItemKey: (index) => tableRows[index]?.id ?? index,
     });
     const virtualItems = rowVirtualizer.getVirtualItems();
+    // Tablo Ayarlari penceresindeki kolon listesi (guncel sirayla)
+    const settingsColumns = useMemo(() => {
+        if (!enableSettingsPanel) return [];
+        const sample = effectiveData[0] as Record<string, unknown> | undefined;
+        return resolveColumnOrder(tableSettings.columnOrder, dataColumnIds).map((id) => {
+            const definition = (providedColumns ?? generatedColumns).find(
+                (column) => (column.id ?? (column as { accessorKey?: string }).accessorKey) === id,
+            );
+            const header = definition?.header;
+            const defaultLabel = providedColumns
+                ? (typeof header === "string" ? header : columnLabels?.[id] || formatColumnHeader(id))
+                : columnLabels?.[id] || formatColumnHeader(id);
+            const meta = definition?.meta as { isNumeric?: boolean } | undefined;
+            return {
+                id,
+                label: tableSettings.columnLabels?.[id] || defaultLabel,
+                defaultLabel,
+                isNumeric: meta?.isNumeric ?? isFiniteNumber(sample?.[id]),
+                grouped: grouping.includes(id),
+            };
+        });
+    }, [enableSettingsPanel, effectiveData, tableSettings.columnOrder, tableSettings.columnLabels, dataColumnIds, providedColumns, generatedColumns, columnLabels, grouping]);
+    const hasTableSettings = Object.keys(tableSettings).length > 0;
+    const handleDataImport = (rows: Record<string, unknown>[]) => {
+        setImportedData(rows as T[]);
+        // Yeni veride olmayan kolonlara gore gruplama kalmasin
+        const keys = new Set(Object.keys(rows[0] ?? {}));
+        setGrouping((previous) => {
+            const next = previous.filter((column) => keys.has(column));
+            return next.length === previous.length ? previous : next;
+        });
+        onDataImport?.(rows);
+    };
+
+    // Tablo Ayarlari > Hucre Renkleri ve Kosullu Bicimlendirme
+    const cellStylingActive = hasActiveTableConditions(tableSettings)
+        || Boolean(tableSettings.cellStyles)
+        || Boolean(tableSettings.columnCellStyles);
+    // 2. renk icin veri satirlarinin sirasi; her grupta yeniden baslar
+    const alternateRows = useMemo(() => {
+        const parity = new Map<string, boolean>();
+        if (!cellStylingActive) return parity;
+        let position = 0;
+        tableRows.forEach((row) => {
+            if (row.getIsGrouped()) {
+                position = 0;
+                return;
+            }
+            parity.set(row.id, position % 2 === 1);
+            position += 1;
+        });
+        return parity;
+    }, [cellStylingActive, tableRows]);
+    /** Hucre rengi < satir kosulu < hucre kosulu sirasiyla birlestirilir. */
+    const getSettingsCellStyle = (
+        column: { id: string; columnDef: { meta?: unknown } },
+        kind: TableCellKind,
+        value: unknown,
+        options: { rowCondition?: CSSProperties; alternate?: boolean; conditions?: boolean } = {},
+    ): CSSProperties | undefined => {
+        if (!cellStylingActive) return undefined;
+        if (isSelectColumnId(column.id)) return options.rowCondition;
+        const isNumeric = (column.columnDef.meta as { isNumeric?: boolean } | undefined)?.isNumeric
+            ?? typeof value === "number";
+        const color = resolveTableCellColor(tableSettings, column.id, kind, options.alternate);
+        const condition = options.conditions === false
+            ? undefined
+            : resolveTableConditionStyle(tableSettings.conditions, column.id, isNumeric, toNumberOrNull(value), kind);
+        if (!color && !condition && !options.rowCondition) return undefined;
+        return { ...color, ...options.rowCondition, ...condition };
+    };
+    const knownColumnIds = useMemo(() => new Set(dataColumnIds), [dataColumnIds]);
+    // Tabloda olmayan kolona bagli kural (ör. yeni veri yuklendikten sonra) degersiz sayilir
+    const getSettingsRowStyle = (getValue: (column: string) => unknown, kind: TableCellKind) =>
+        cellStylingActive
+            ? resolveTableRowConditionStyle(
+                tableSettings.conditions,
+                (column) => (knownColumnIds.has(column) ? getValue(column) : undefined),
+                kind,
+            )
+            : undefined;
+
     const rowsToRender = virtualizationEnabled
         ? virtualItems
             .map((item) => tableRows[item.index])
@@ -1864,6 +2071,21 @@ function DataTableInner<T extends Record<string, any>>({
                         </Button>
                     ) : null}
                     {toolbarExtra}
+                    {enableSettingsPanel ? (
+                        <Button
+                            onClick={() => setSettingsOpen(true)}
+                            variant="flat"
+                            isIcon
+                            className="relative size-8 rounded-full"
+                            title="Tablo ayarları"
+                            aria-label="Tablo ayarları"
+                        >
+                            <AdjustmentsVerticalIcon className="size-4.5" />
+                            {hasTableSettings ? (
+                                <span className="bg-primary-600 absolute top-1 right-1 size-1.5 rounded-full" aria-hidden="true" />
+                            ) : null}
+                        </Button>
+                    ) : null}
                     {enableTableViewMenu ? (
                     <TableViewMenu
                         settings={viewSettings}
@@ -2043,6 +2265,7 @@ function DataTableInner<T extends Record<string, any>>({
                                                 pinnedLeftColumn,
                                                 pinnedRightColumn,
                                             );
+                                            const groupRowCondition = getSettingsRowStyle((column) => row.getValue(column), "totals");
                                             const groupHeaderFirstIndex = rowSelectionEnabled ? 1 : 0;
                                             const groupHeaderIndex =
                                                 pinnedLeftColumn
@@ -2064,11 +2287,22 @@ function DataTableInner<T extends Record<string, any>>({
                                                             cell.column.id,
                                                         );
                                                         const stickyClassName = getStickyCellClassName(stickyKind, "group");
-                                                        const stickyStyle = getStickyCellStyle(
-                                                            stickyKind,
-                                                            rowSelectionEnabled,
-                                                            isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
+                                                        const isAggregatedCell = cell.getIsAggregated()
+                                                            && !hideInGroupRow.includes(cell.column.id);
+                                                        const settingsStyle = getSettingsCellStyle(
+                                                            cell.column,
+                                                            "totals",
+                                                            isAggregatedCell ? cell.getValue() : null,
+                                                            { rowCondition: groupRowCondition, conditions: isAggregatedCell },
                                                         );
+                                                        const stickyStyle = {
+                                                            ...getStickyCellStyle(
+                                                                stickyKind,
+                                                                rowSelectionEnabled,
+                                                                isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
+                                                            ),
+                                                            ...settingsStyle,
+                                                        };
 
                                                         if (isSelectColumn) {
                                                             const leafRows = getSelectableLeafRows(row);
@@ -2121,11 +2355,14 @@ function DataTableInner<T extends Record<string, any>>({
                                                                         "border-r border-gray-200 dark:border-dark-600 last:border-r-0",
                                                                         stickyClassName,
                                                                     )}
-                                                                    style={getStickyCellStyle(
-                                                                        stickyKind,
-                                                                        rowSelectionEnabled,
-                                                                        { paddingLeft: `${paddingLeft}px` },
-                                                                    )}
+                                                                    style={{
+                                                                        ...getStickyCellStyle(
+                                                                            stickyKind,
+                                                                            rowSelectionEnabled,
+                                                                            { paddingLeft: `${paddingLeft}px` },
+                                                                        ),
+                                                                        ...settingsStyle,
+                                                                    }}
                                                                 >
                                                                     {customGroupHeaderTemplate ? (
                                                                         <div className="flex items-center gap-2">
@@ -2233,6 +2470,8 @@ function DataTableInner<T extends Record<string, any>>({
                                         const customRowStyle = typeof rowStyle === "function"
                                             ? rowStyle(row.original, row.index)
                                             : rowStyle;
+                                        const dataRowCondition = getSettingsRowStyle((column) => row.getValue(column), "cells");
+                                        const alternateRow = alternateRows.get(row.id) ?? false;
                                         return (
                                             <Tr
                                                 key={row.id}
@@ -2270,11 +2509,17 @@ function DataTableInner<T extends Record<string, any>>({
                                                                 isSelectColumn && "px-3 text-center",
                                                                 getStickyCellClassName(stickyKind, "body"),
                                                             )}
-                                                            style={getStickyCellStyle(
-                                                                stickyKind,
-                                                                rowSelectionEnabled,
-                                                                isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
-                                                            )}
+                                                            style={{
+                                                                ...getStickyCellStyle(
+                                                                    stickyKind,
+                                                                    rowSelectionEnabled,
+                                                                    isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
+                                                                ),
+                                                                ...getSettingsCellStyle(cell.column, "cells", cell.getValue(), {
+                                                                    rowCondition: dataRowCondition,
+                                                                    alternate: alternateRow,
+                                                                }),
+                                                            }}
                                                         >
                                                             {cell.getIsGrouped() ? null : cell.getIsAggregated() ? (
                                                                 flexRender(
@@ -2296,6 +2541,27 @@ function DataTableInner<T extends Record<string, any>>({
                                     {virtualizationEnabled ? <VirtualPad height={virtualPadBottom} /> : null}
                                     {grouping.length > 0 && hasAggregateColumns && (() => {
                                         const totalRowFirstIndex = rowSelectionEnabled ? 1 : 0;
+                                        const totalLeafRows = table
+                                            .getFilteredRowModel()
+                                            .flatRows
+                                            .filter((row) => !row.getIsGrouped()
+                                                && !isRemoteGroupPlaceholder(row.original));
+                                        const totalCache = new Map<string, unknown>();
+                                        /** Kolonun genel toplami; aggregate tanimli degilse undefined. */
+                                        const getColumnTotal = (columnId: string) => {
+                                            if (totalCache.has(columnId)) return totalCache.get(columnId);
+                                            const column = table.getColumn(columnId);
+                                            const aggregationFn = column?.getAggregationFn();
+                                            const total = column
+                                                && aggregate?.[columnId as Extract<keyof T, string>]
+                                                && aggregationFn
+                                                && !hideInGroupRow.includes(columnId)
+                                                ? aggregationFn(columnId, totalLeafRows, [])
+                                                : undefined;
+                                            totalCache.set(columnId, total);
+                                            return total;
+                                        };
+                                        const totalRowCondition = getSettingsRowStyle(getColumnTotal, "grandTotals");
                                         const totalRowLabelIndex =
                                             pinnedLeftColumn
                                             && visibleLeafColumns[totalRowFirstIndex]?.id === pinnedLeftColumn
@@ -2312,11 +2578,18 @@ function DataTableInner<T extends Record<string, any>>({
                                                     column.id,
                                                 );
                                                 const stickyClassName = getStickyCellClassName(stickyKind, "total");
-                                                const stickyStyle = getStickyCellStyle(
-                                                    stickyKind,
-                                                    rowSelectionEnabled,
-                                                    isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
-                                                );
+                                                const columnTotal = isSelectColumn ? undefined : getColumnTotal(column.id);
+                                                const stickyStyle = {
+                                                    ...getStickyCellStyle(
+                                                        stickyKind,
+                                                        rowSelectionEnabled,
+                                                        isSelectColumn ? SELECT_COLUMN_STYLE : undefined,
+                                                    ),
+                                                    ...getSettingsCellStyle(column, "grandTotals", columnTotal ?? null, {
+                                                        rowCondition: totalRowCondition,
+                                                        conditions: columnTotal !== undefined && index !== totalRowLabelIndex,
+                                                    }),
+                                                };
 
                                                 if (isSelectColumn) {
                                                     return (
@@ -2362,22 +2635,9 @@ function DataTableInner<T extends Record<string, any>>({
                                                     );
                                                 }
 
-                                                const configuredAggregate =
-                                                    aggregate?.[
-                                                        column.id as Extract<keyof T, string>
-                                                    ];
-                                                const aggregationFn = column.getAggregationFn();
-                                                if (configuredAggregate && aggregationFn) {
-                                                    const leafRows = table
-                                                        .getFilteredRowModel()
-                                                        .flatRows
-                                                        .filter((row) => !row.getIsGrouped()
-                                                            && !isRemoteGroupPlaceholder(row.original));
-                                                    const total = aggregationFn(
-                                                        column.id,
-                                                        leafRows,
-                                                        [],
-                                                    );
+                                                if (columnTotal !== undefined) {
+                                                    const total = columnTotal;
+                                                    const totalFormat = resolveColumnNumberFormat(tableSettings, column.id);
 
                                                     return (
                                                         <Td
@@ -2390,7 +2650,9 @@ function DataTableInner<T extends Record<string, any>>({
                                                         >
                                                             <span className="font-bold text-primary-700 dark:text-primary-300">
                                                                 {typeof total === "number"
-                                                                    ? total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })
+                                                                    ? totalFormat
+                                                                        ? formatPivotNumber(total, totalFormat)
+                                                                        : total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })
                                                                     : String(total)}
                                                             </span>
                                                         </Td>
@@ -2612,6 +2874,23 @@ function DataTableInner<T extends Record<string, any>>({
                     onPinLeft={handlePinLeftFromMenu}
                     onPinRight={handlePinRightFromMenu}
                     onClose={closeHeaderContextMenu}
+                />
+            ) : null}
+
+            {enableSettingsPanel ? (
+                <TableSettingsDialog
+                    open={settingsOpen}
+                    onClose={() => setSettingsOpen(false)}
+                    tab={settingsTab}
+                    onTabChange={setSettingsTab}
+                    tabs={settingsTabs}
+                    columns={settingsColumns}
+                    naturalOrder={dataColumnIds}
+                    settings={tableSettings}
+                    onSettingsChange={updateTableSettings}
+                    currentData={effectiveData as readonly Record<string, unknown>[]}
+                    onDataImport={enableDataImport && !hasDataSource ? handleDataImport : undefined}
+                    onNotify={(type, message) => notify(type, message, onNotify)}
                 />
             ) : null}
 
