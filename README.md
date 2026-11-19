@@ -209,6 +209,7 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
 | `values` | `{ field, aggregate: "sum" \| "avg" \| "count" \| "min" \| "max", label?, numberFormat?, cellStyles?, format? }` |
 | `filters` / `filterValues` | Filter-only fields and the values to include per field (`null` for blanks). |
 | `fieldLabels` | Display names for row/column/filter fields, e.g. `{ "department": "Department" }`. |
+| `fieldSort` | Value order for row/column/filter fields: `{ sortBy?, order?: "asc" \| "desc" }` per field. `sortBy` is another field of the same record, e.g. `{ "branchName": { "sortBy": "displayOrder" } }`; ties fall back to the field's own value and blanks always come last. |
 | `numberFormat` | Default number format for all data fields; `values[].numberFormat` overrides it per field. |
 | `cellStyles` | Background/text colors for `cells`, `alternateCells` (second color; visible data columns alternate in order), `totals` (subtotals), and `grandTotals`; `values[].cellStyles` overrides per field. |
 | `conditions` | Conditional formatting rules (see below). |
@@ -224,12 +225,12 @@ Date values such as `"2025-03-14"` or `"2025-03-14T09:30:00"` are detected autom
 - **Tab visibility** (Table View menu → Pivot tabs): show or hide each settings tab. Initial state comes from `defaultPivotToolbar`, e.g. `{ configuration: false }`.
 - **Field chooser** tab: drag fields between Filter, Row, Column, and Data areas; filter values with the funnel icon; switch the summary type with Σ. The dialog can be maximized and resized.
 - **Field panel** (Table View menu): filter fields above the grid, data and row fields in the top-left corner, column fields above the column headers.
-- **Chip context menu** (right click): Rename (F2), Reset name, Remove (Delete).
+- **Chip context menu** (right click): Rename (F2), Reset name, Remove (Delete). Row, column, and filter chips also offer Sort ascending/descending and a "Sort by" submenu to order values by another field (stored in `fieldSort`); the filter value list follows the same order.
 - **Cell colors** tab: background and text colors for data cells (with an optional second color that alternates column by column in the given order; total columns do not break the sequence), subtotals, and grand totals, as defaults or per data field. Text color is picked automatically for readability when omitted; conditional formatting is applied on top.
 - **Number format** tab: WebDataRocks-style "Format cells" settings with alignment, thousands/decimal separators, decimal places, currency symbol and position, empty-cell text, and percent display. Choose "All values" for the default or a data field for a per-field override; changes are previewed and applied with Apply. Excel exports keep raw numbers.
 - **Conditional formatting** tab: rules with a data field, an operator (`lt`, `lte`, `gt`, `gte`, `eq`, `neq`, `between`, `notBetween`, `empty`, `notEmpty`), a scope (`all`, `cells`, `totals`), and a format (background, text color, bold, italic). Later rules override earlier ones.
 - **Data** tab (`enablePivotDataImport`): shows the current data as JSON; edit it, clear it and paste a new JSON array (or `{ "data": [...] }`), or load a file. Apply is disabled until the data changes. Errors are reported with line and column; applying resets the pivot and switches to the Field Chooser tab. `onPivotDataImport(rows)` is called.
-- **Configuration** tab: summary and JSON view of the field chooser, cell colors, number format, and conditional formatting settings. Copy, download, load from file, edit, and apply with structural validation.
+- **Configuration** tab: summary and JSON view of the field chooser (including field sorting), cell colors, number format, and conditional formatting settings. Copy, download, load from file, edit, and apply with structural validation.
 - **Download**: the pivot grid (merged cells) or the filtered raw data as Excel.
 - Warnings for non-numeric sums, missing fields, empty data areas, and very wide/tall layouts.
 
@@ -239,6 +240,7 @@ Date values such as `"2025-03-14"` or `"2025-03-14T09:30:00"` are detected autom
   "columns": ["date::year"],
   "values": [{ "field": "amount", "aggregate": "sum", "label": "Revenue" }],
   "fieldLabels": { "region": "Region" },
+  "fieldSort": { "region": { "sortBy": "regionOrder" } },
   "cellStyles": {
     "totals": { "backgroundColor": "#fef9c3" },
     "grandTotals": { "backgroundColor": "#dbeafe", "color": "#1e40af" }

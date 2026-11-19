@@ -601,7 +601,7 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
 
         <h3>Yapılandırma</h3>
         <p>
-          <strong>Yapılandırma</strong> düğmesi alan seçici, hücre renkleri, sayı biçimi ve
+          <strong>Yapılandırma</strong> düğmesi alan seçici (alan sıralaması dahil), hücre renkleri, sayı biçimi ve
           koşullu biçimlendirme ayarlarını Özet ve JSON olarak gösterir. JSON kopyalanabilir, indirilebilir,
           düzenlenip ya da dosyadan yüklenip uygulanabilir; yapı hataları yol bilgisiyle
           (<code className="docs-code-inline">values[0].aggregate geçersiz</code>) bildirilir.
@@ -614,6 +614,7 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
   "filterValues": { "status": [1] },
   "values": [{ "field": "amount", "aggregate": "sum", "label": "Ciro" }],
   "fieldLabels": { "region": "Bölge" },
+  "fieldSort": { "region": { "sortBy": "regionOrder" } },
   "numberFormat": { "decimalPlaces": 2, "currencySymbol": "₺" },
   "cellStyles": { "totals": { "backgroundColor": "#fef9c3" } },
   "conditions": [],
