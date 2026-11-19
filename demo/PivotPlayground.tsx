@@ -53,6 +53,9 @@ function buildPivotCode(pivot: DataTablePivotConfig<DemoRow>) {
     ...(Object.keys(pivot.fieldLabels ?? {}).length
       ? [`    fieldLabels: ${JSON.stringify(pivot.fieldLabels)},`]
       : []),
+    ...(Object.keys(pivot.fieldSort ?? {}).length
+      ? [`    fieldSort: ${JSON.stringify(pivot.fieldSort)},`]
+      : []),
     ...(pivot.conditions?.length
       ? [
         "    conditions: [",

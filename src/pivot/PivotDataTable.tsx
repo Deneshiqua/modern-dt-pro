@@ -64,6 +64,7 @@ export function PivotDataTable<T extends Record<string, any>>({
         expandedColumns: [],
         conditions: [],
         fieldLabels: {},
+        fieldSort: {},
         showRowTotals: pivot.showRowTotals,
         showColumnTotals: pivot.showColumnTotals,
         showRowGrandTotals: pivot.showRowGrandTotals,

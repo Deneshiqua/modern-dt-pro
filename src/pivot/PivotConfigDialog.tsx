@@ -79,6 +79,7 @@ function ConfigSummary({ config, fields }: { config: Config; fields: PivotField[
   const missing = (id: string) => !fields.some((field) => field.id === id);
   const conditions = config.conditions ?? [];
   const filterEntries = Object.entries(config.filterValues ?? {}).filter(([, values]) => Array.isArray(values));
+  const sortEntries = Object.entries(config.fieldSort ?? {}).filter(([, sort]) => sort && (sort.sortBy || sort.order));
 
   const chips = (ids: string[]) =>
     ids.length === 0 ? (
@@ -132,6 +133,33 @@ function ConfigSummary({ config, fields }: { config: Config; fields: PivotField[
                   <span className="font-medium">{labelOf(field)}:</span>{" "}
                   <span className="dark:text-dark-200 text-gray-600">
                     {values!.length === 0 ? "hiçbiri" : values!.map((value) => (value === null ? "(Boş)" : String(value))).join(", ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SummaryRow>
+        <SummaryRow label="Sıralama">
+          {sortEntries.length === 0 ? (
+            <span className="dark:text-dark-300 text-sm text-gray-400">Varsayılan (alanın kendi değeri, artan)</span>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm">
+              {sortEntries.map(([field, sort]) => (
+                <li key={field} className="min-w-0">
+                  <span className="font-medium">{labelOf(field)}:</span>{" "}
+                  <span className="dark:text-dark-200 text-gray-600">
+                    {sort!.sortBy ? (
+                      <span
+                        title={missing(sort!.sortBy) ? "Veride bu alan yok" : undefined}
+                        className={clsx(missing(sort!.sortBy) && "text-red-600 dark:text-red-300")}
+                      >
+                        {labelOf(sort!.sortBy)}
+                      </span>
+                    ) : (
+                      "kendi değeri"
+                    )}
+                    {" · "}
+                    {sort!.order === "desc" ? "Azalan" : "Artan"}
                   </span>
                 </li>
               ))}

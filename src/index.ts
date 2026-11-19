@@ -7,6 +7,7 @@ export type {
   DataTablePivotAggregate,
   DataTablePivotValue,
   DataTablePivotConfig,
+  DataTablePivotFieldSort,
   DataTablePivotFilterValue,
   DataTablePivotDateInterval,
   DataTablePivotCondition,

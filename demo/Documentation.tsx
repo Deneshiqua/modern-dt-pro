@@ -504,6 +504,9 @@ const [pivot, setPivot] = useState<DataTablePivotConfig<Sale>>({
             <strong>Çip menüsü (sağ tık).</strong> Yeniden adlandır (F2), Varsayılan ada
             dön, Kaldır (Delete). Yeni adlar <code className="docs-code-inline">fieldLabels</code>{" "}
             ve <code className="docs-code-inline">values[].label</code> içinde saklanır.
+            Satır/sütun/filtre çiplerinde ayrıca <em>Artan / Azalan sırala</em> ve{" "}
+            <em>Sıralama ölçütü</em> vardır: değerler başka bir alana göre dizilebilir (ör. Şube →
+            DisplayOrder); seçim <code className="docs-code-inline">fieldSort</code> içinde saklanır.
           </li>
           <li>
             <strong>Tablo Görünümü.</strong> Tam ekran, sıkıştır, başlık, alan paneli, dört
@@ -1091,6 +1094,7 @@ const PIVOT_CONFIG_ROWS: PropRow[] = [
   { name: "filters", type: "string[]", def: "[]", desc: "Yalnızca filtrelemek için kullanılan alanlar." },
   { name: "filterValues", type: "Record<string, (string | number | boolean | null)[]>", def: "—", desc: "Alan başına dahil edilecek değerler; boş değer için null." },
   { name: "fieldLabels", type: "Record<string, string>", def: "—", desc: "Satır/sütun/filtre alanlarının görünen adları." },
+  { name: "fieldSort", type: "Record<string, { sortBy?: string; order?: \"asc\" | \"desc\" }>", def: "—", desc: "Satır/sütun/filtre alanlarının değer sırası; sortBy aynı kayıttaki başka bir alandır, eşitlikte alanın kendi değeri kullanılır." },
   { name: "numberFormat", type: "DataTablePivotNumberFormat", def: "—", desc: "Tüm veri alanları için varsayılan sayı biçimi; values[].numberFormat alana özel biçimdir." },
   { name: "cellStyles", type: "DataTablePivotCellStyles", def: "—", desc: "Veri hücresi, ara toplam ve genel toplam renkleri; values[].cellStyles alana özeldir." },
   { name: "conditions", type: "DataTablePivotCondition[]", def: "[]", desc: "Koşullu biçimlendirme kuralları." },

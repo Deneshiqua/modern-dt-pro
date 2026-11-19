@@ -170,7 +170,7 @@ export function PivotGrid({
         modelError: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [data, config.rows, config.columns, config.values, config.filterValues, valueMappers, dateFields]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, config.rows, config.columns, config.values, config.filterValues, config.fieldSort, valueMappers, dateFields]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const issues = useMemo(() => {
     const found = validatePivotConfig(config, fields, model);

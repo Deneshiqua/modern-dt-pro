@@ -356,6 +356,19 @@ export type DataTablePivotConfig<T = Record<string, unknown>> = {
    * `{ "department": "Departman" }`. Veri alanlari icin `values[].label` kullanilir.
    */
   fieldLabels?: Partial<Record<Extract<keyof T, string> | string, string>>;
+  /**
+   * Satir/sutun/filtre alanlarinin deger sirasi (alan kimligi -> siralama), ornegin
+   * `{ "branchName": { "sortBy": "displayOrder" } }`: subeler kayittaki `displayOrder` degerine gore dizilir.
+   * `sortBy` verilmezse alanin kendi degeri kullanilir; esit degerler alanin kendi degerine gore dizilir.
+   */
+  fieldSort?: Partial<Record<Extract<keyof T, string> | string, DataTablePivotFieldSort>>;
+};
+
+export type DataTablePivotFieldSort = {
+  /** Siralama icin kullanilacak kaynak alan (ayni kayittan okunur). Verilmezse alanin kendi degeri. */
+  sortBy?: string;
+  /** Varsayilan: "asc". */
+  order?: "asc" | "desc";
 };
 
 export type DataTableProps<T> = {

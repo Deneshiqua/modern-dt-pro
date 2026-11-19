@@ -165,3 +165,41 @@ describe("applyPivotFieldLabels", () => {
     expect(applyPivotFieldLabels(fields, undefined)).toBe(fields);
   });
 });
+
+describe("alan siralamasi (fieldSort)", () => {
+  const branches = [
+    { branch: "Konak", order: 10, amount: 1 },
+    { branch: "Güney", order: 1, amount: 2 },
+    { branch: "Üçyol", order: 0, amount: 3 },
+    { branch: "Kuzey", order: 2, amount: 4 },
+    { branch: "Pınarbaşı", order: 0, amount: 5 },
+    { branch: "Yeni", order: null, amount: 6 },
+  ];
+  const columnLabels = (fieldSort?: Record<string, { sortBy?: string; order?: "asc" | "desc" }>) =>
+    buildPivotModel(branches, {
+      rows: [],
+      columns: ["branch"],
+      values: [{ field: "amount", aggregate: "sum" }],
+      fieldSort,
+    }).columnRoot.children.map((node) => node.label);
+
+  it("varsayilan olarak alanin kendi degerine gore dizer", () => {
+    expect(columnLabels()).toEqual(["Güney", "Konak", "Kuzey", "Pınarbaşı", "Üçyol", "Yeni"]);
+  });
+
+  it("sortBy alanina gore dizer; esitlikte kendi degeri, bos en sonda", () => {
+    expect(columnLabels({ branch: { sortBy: "order" } }))
+      .toEqual(["Pınarbaşı", "Üçyol", "Güney", "Kuzey", "Konak", "Yeni"]);
+  });
+
+  it("azalan sirada bos deger yine en sonda kalir", () => {
+    expect(columnLabels({ branch: { sortBy: "order", order: "desc" } }))
+      .toEqual(["Konak", "Kuzey", "Güney", "Üçyol", "Pınarbaşı", "Yeni"]);
+  });
+
+  it("filtre listesi de ayni sirayi kullanir", () => {
+    expect(getPivotFieldValues(branches, "branch", undefined, undefined, { branch: { sortBy: "order" } })
+      .map((item) => item.label))
+      .toEqual(["Pınarbaşı", "Üçyol", "Güney", "Kuzey", "Konak", "Yeni"]);
+  });
+});

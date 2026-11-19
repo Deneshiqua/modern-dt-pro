@@ -17,7 +17,12 @@ import {
 } from "@headlessui/react";
 import {
   ArrowUturnLeftIcon,
+  ArrowsUpDownIcon,
+  BarsArrowDownIcon,
+  BarsArrowUpIcon,
   Bars3BottomLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CalendarDaysIcon,
   ExclamationTriangleIcon,
   CheckIcon,
@@ -34,6 +39,7 @@ import { Button, Checkbox, Input } from "../ui";
 import type {
   DataTablePivotAggregate,
   DataTablePivotConfig,
+  DataTablePivotFieldSort,
   DataTablePivotFilterValue,
   DataTablePivotValue,
 } from "../types";
@@ -373,6 +379,53 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
     onChange({ ...config, fieldLabels: name ? { ...rest, [field]: name } : rest });
   };
 
+  const setFieldSort = (field: string, sort: DataTablePivotFieldSort) => {
+    const { [field]: _previous, ...rest } = config.fieldSort ?? {};
+    const compact: DataTablePivotFieldSort = {
+      ...(sort.sortBy ? { sortBy: sort.sortBy } : {}),
+      ...(sort.order === "desc" ? { order: "desc" as const } : {}),
+    };
+    onChange({ ...config, fieldSort: Object.keys(compact).length > 0 ? { ...rest, [field]: compact } : rest });
+  };
+
+  /** Boyut ciplerinin baglam menusundeki siralama secenekleri. */
+  const sortMenuItems = (field: string): ContextMenuItem[] => {
+    const current = config.fieldSort?.[field] ?? {};
+    const source = fields.find((item) => item.id === field)?.source ?? field;
+    const sortBy = current.sortBy && current.sortBy !== source ? current.sortBy : undefined;
+    const candidates = fields.filter((item) => !item.parentId && item.id !== source);
+    return [
+      {
+        label: "Artan sırala",
+        icon: <BarsArrowUpIcon className="size-4" />,
+        checked: current.order !== "desc",
+        onSelect: () => setFieldSort(field, { ...current, order: "asc" }),
+      },
+      {
+        label: "Azalan sırala",
+        icon: <BarsArrowDownIcon className="size-4" />,
+        checked: current.order === "desc",
+        onSelect: () => setFieldSort(field, { ...current, order: "desc" }),
+      },
+      {
+        label: sortBy ? `Sıralama ölçütü: ${labelOf(sortBy)}` : "Sıralama ölçütü",
+        icon: <ArrowsUpDownIcon className="size-4" />,
+        items: [
+          {
+            label: `${labelOf(field)} (kendi değeri)`,
+            checked: !sortBy,
+            onSelect: () => setFieldSort(field, { ...current, sortBy: undefined }),
+          },
+          ...candidates.map((item) => ({
+            label: item.label,
+            checked: sortBy === item.id,
+            onSelect: () => setFieldSort(field, { ...current, sortBy: item.id }),
+          })),
+        ],
+      },
+    ];
+  };
+
   const setFilterValues = (field: string, values: DataTablePivotFilterValue[] | undefined) => {
     const next = { ...(config.filterValues ?? {}) };
     if (values === undefined) delete next[field];
@@ -451,6 +504,7 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
         label={labelOf(field)}
         renamed={Boolean(config.fieldLabels?.[field])}
         onRename={(name) => setFieldLabel(field, name)}
+        menuItems={sortMenuItems(field)}
         dragging={drag?.from === area && drag.field === field}
         insertBefore={dropTarget?.area === area && dropTarget.index === index}
         dragProps={dragProps({ field, from: area, index })}
@@ -464,6 +518,7 @@ export function usePivotAreas({ config, fields, data, valueMappers, dateFields, 
           valueMappers={valueMappers}
           dateFields={dateFields}
           selected={config.filterValues?.[field]}
+          fieldSort={config.fieldSort}
           onChange={(values) => setFilterValues(field, values)}
         />
       </FieldChip>
@@ -542,6 +597,7 @@ export function FieldChip({
   onRemove,
   onRename,
   renamed = false,
+  menuItems: extraMenuItems = [],
   children,
 }: {
   label: string;
@@ -554,6 +610,8 @@ export function FieldChip({
   onRename?: (name: string | undefined) => void;
   /** Ad kullanici tarafindan degistirilmis mi (menude "Varsayilan ada don" gosterilir). */
   renamed?: boolean;
+  /** "Kaldir"dan once gosterilecek ek menu ogeleri. */
+  menuItems?: ContextMenuItem[];
   children?: ReactNode;
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -585,6 +643,7 @@ export function FieldChip({
     ...(onRename && renamed
       ? [{ label: "Varsayılan ada dön", icon: <ArrowUturnLeftIcon className="size-4" />, onSelect: () => onRename(undefined) }]
       : []),
+    ...extraMenuItems,
     { label: "Kaldır", icon: <TrashIcon className="size-4" />, onSelect: onRemove },
   ];
 
@@ -649,7 +708,15 @@ export function FieldChip({
   );
 }
 
-type ContextMenuItem = { label: string; icon?: ReactNode; onSelect: () => void };
+type ContextMenuItem = {
+  label: string;
+  icon?: ReactNode;
+  /** Secili secenek isareti. */
+  checked?: boolean;
+  /** Verilirse oge alt menu acar. */
+  items?: ContextMenuItem[];
+  onSelect?: () => void;
+};
 
 /** Imlec konumunda acilan basit baglam menusu; disari tiklama, Escape veya kaydirma ile kapanir. */
 function ChipContextMenu({
@@ -665,6 +732,9 @@ function ChipContextMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y });
+  const [submenu, setSubmenu] = useState<ContextMenuItem | null>(null);
+  const visibleItems = submenu?.items ?? items;
+  const hasChecks = visibleItems.some((item) => item.checked !== undefined);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -675,7 +745,7 @@ function ChipContextMenu({
       top: Math.min(y, window.innerHeight - height - 8),
     });
     menu.querySelector<HTMLButtonElement>("button")?.focus();
-  }, [x, y]);
+  }, [x, y, submenu]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -687,14 +757,18 @@ function ChipContextMenu({
         onClose();
       }
     };
+    // Alt menu listesinin kendi kaydirmasi menuyu kapatmaz
+    const onScroll = (event: Event) => {
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
+    };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKey, true);
-    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onClose);
     };
   }, [onClose]);
@@ -708,21 +782,46 @@ function ChipContextMenu({
         style={position}
         onContextMenu={(event) => event.preventDefault()}
       >
-        {items.map((item) => (
+        {submenu ? (
           <button
-            key={item.label}
             type="button"
             role="menuitem"
-            onClick={() => {
-              onClose();
-              item.onSelect();
-            }}
-            className="dark:text-dark-100 dark:hover:bg-dark-600 dark:focus:bg-dark-600 flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 outline-hidden hover:bg-gray-100 focus:bg-gray-100"
+            onClick={() => setSubmenu(null)}
+            className="dark:text-dark-300 dark:hover:bg-dark-600 dark:focus:bg-dark-600 dark:border-dark-500 mb-1 flex w-full items-center gap-2 border-b border-gray-200 px-3 py-1.5 text-left text-xs font-medium text-gray-500 outline-hidden hover:bg-gray-100 focus:bg-gray-100"
           >
-            {item.icon}
-            {item.label}
+            <ChevronLeftIcon className="size-4" />
+            {submenu.label}
           </button>
-        ))}
+        ) : null}
+        <div className={clsx(submenu && "max-h-72 overflow-y-auto")}>
+          {visibleItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+              aria-checked={item.checked}
+              aria-haspopup={item.items ? "menu" : undefined}
+              onClick={() => {
+                if (item.items) {
+                  setSubmenu(item);
+                  return;
+                }
+                onClose();
+                item.onSelect?.();
+              }}
+              className="dark:text-dark-100 dark:hover:bg-dark-600 dark:focus:bg-dark-600 flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 outline-hidden hover:bg-gray-100 focus:bg-gray-100"
+            >
+              {hasChecks && !item.icon ? (
+                <CheckIcon className={clsx("size-4 shrink-0", !item.checked && "invisible")} />
+              ) : (
+                item.icon
+              )}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.icon && item.checked ? <CheckIcon className="text-primary-600 dark:text-primary-400 size-4 shrink-0" /> : null}
+              {item.items ? <ChevronRightIcon className="size-4 shrink-0 text-gray-400" /> : null}
+            </button>
+          ))}
+        </div>
       </div>
     </Portal>
   );
@@ -792,6 +891,7 @@ function ValueFilterButton({
   valueMappers,
   dateFields,
   selected,
+  fieldSort,
   onChange,
 }: {
   field: string;
@@ -800,6 +900,7 @@ function ValueFilterButton({
   valueMappers?: PivotValueMappers;
   dateFields?: ReadonlySet<string>;
   selected?: DataTablePivotFilterValue[];
+  fieldSort?: Config["fieldSort"];
   onChange: (values: DataTablePivotFilterValue[] | undefined) => void;
 }) {
   const isFiltered = Array.isArray(selected);
@@ -827,6 +928,7 @@ function ValueFilterButton({
           valueMappers={valueMappers}
           dateFields={dateFields}
           selected={selected}
+          fieldSort={fieldSort}
           onChange={onChange}
         />
       </PopoverPanel>
@@ -840,6 +942,7 @@ function ValueFilterList({
   valueMappers,
   dateFields,
   selected,
+  fieldSort,
   onChange,
 }: {
   field: string;
@@ -847,12 +950,13 @@ function ValueFilterList({
   valueMappers?: PivotValueMappers;
   dateFields?: ReadonlySet<string>;
   selected?: DataTablePivotFilterValue[];
+  fieldSort?: Config["fieldSort"];
   onChange: (values: DataTablePivotFilterValue[] | undefined) => void;
 }) {
   const [search, setSearch] = useState("");
   const options = useMemo(
-    () => getPivotFieldValues(data, field, valueMappers, dateFields),
-    [data, field, valueMappers, dateFields],
+    () => getPivotFieldValues(data, field, valueMappers, dateFields, fieldSort),
+    [data, field, valueMappers, dateFields, fieldSort],
   );
   const selectedKeys = useMemo(
     () => (selected ? new Set(selected.map(pivotFilterKey)) : undefined),

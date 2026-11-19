@@ -138,3 +138,23 @@ describe("yapilandirma disa/ice aktarma", () => {
     expect(!broken.ok && broken.errors[0]).toMatch(/satır 1, sütun 11/);
   });
 });
+
+describe("fieldSort yapilandirmasi", () => {
+  it("JSON'dan okunur ve paylasilabilir yapilandirmada korunur", async () => {
+    const { parsePivotConfigJson, toShareablePivotConfig } = await import("./pivotValidation");
+    const parsed = parsePivotConfigJson(JSON.stringify({
+      rows: [], columns: ["branch"], values: [],
+      fieldSort: { branch: { sortBy: "order", order: "desc" } },
+    }));
+    expect(parsed.ok && parsed.config.fieldSort).toEqual({ branch: { sortBy: "order", order: "desc" } });
+    if (parsed.ok) expect(toShareablePivotConfig(parsed.config as any).fieldSort).toEqual(parsed.config.fieldSort);
+  });
+
+  it("gecersiz order degerini reddeder", async () => {
+    const { parsePivotConfigJson } = await import("./pivotValidation");
+    const parsed = parsePivotConfigJson(JSON.stringify({
+      rows: [], columns: [], values: [], fieldSort: { branch: { order: "up" } },
+    }));
+    expect(parsed.ok).toBe(false);
+  });
+});

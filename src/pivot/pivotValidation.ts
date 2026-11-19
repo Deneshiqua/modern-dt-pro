@@ -191,6 +191,15 @@ export function validatePivotConfig(
     });
   }
 
+  Object.entries(config.fieldSort ?? {}).forEach(([field, sort]) => {
+    if (sort?.sortBy && !byId.has(sort.sortBy)) {
+      issues.push({
+        level: "warning",
+        message: `"${labelOf(field)}" için sıralama alanı "${sort.sortBy}" veride yok; alanın kendi değerine göre sıralanır.`,
+      });
+    }
+  });
+
   config.values.forEach((value) => {
     const field = byId.get(value.field);
     if (field && !field.isNumeric && value.aggregate !== "count") {
@@ -245,6 +254,7 @@ export type PivotShareableConfig = Pick<
   | "values"
   | "conditions"
   | "fieldLabels"
+  | "fieldSort"
   | "numberFormat"
   | "cellStyles"
   | (typeof TOTAL_KEYS)[number]
@@ -266,6 +276,7 @@ export function toShareablePivotConfig(config: DataTablePivotConfig<any>): Pivot
     conditions: (config.conditions ?? []).map(({ id: _id, ...rule }) => rule as DataTablePivotCondition),
   };
   if (config.fieldLabels && Object.keys(config.fieldLabels).length > 0) shareable.fieldLabels = config.fieldLabels;
+  if (config.fieldSort && Object.keys(config.fieldSort).length > 0) shareable.fieldSort = config.fieldSort;
   if (config.numberFormat && Object.keys(config.numberFormat).length > 0) shareable.numberFormat = config.numberFormat;
   if (config.cellStyles && Object.keys(config.cellStyles).length > 0) shareable.cellStyles = config.cellStyles;
   TOTAL_KEYS.forEach((key) => {
@@ -487,11 +498,35 @@ export function parsePivotConfigJson(text: string): PivotConfigParseResult {
     }
   }
 
+  let fieldSort: PivotShareableConfig["fieldSort"];
+  if (parsed.fieldSort !== undefined) {
+    if (!isPlainObject(parsed.fieldSort)) {
+      errors.push('"fieldSort" alan adı → sıralama eşlemesi olmalı, ör. { "branchName": { "sortBy": "displayOrder" } }.');
+    } else {
+      fieldSort = {};
+      Object.entries(parsed.fieldSort).forEach(([field, item]) => {
+        const path = `fieldSort.${field}`;
+        if (!isPlainObject(item)) {
+          errors.push(`${path} nesne olmalı, ör. { "sortBy": "displayOrder", "order": "asc" }.`);
+          return;
+        }
+        if (item.sortBy !== undefined && typeof item.sortBy !== "string") errors.push(`${path}.sortBy alan adı olmalı.`);
+        if (item.order !== undefined && item.order !== "asc" && item.order !== "desc") {
+          errors.push(`${path}.order "asc" ya da "desc" olmalı.`);
+        }
+        fieldSort![field] = {
+          ...(typeof item.sortBy === "string" && item.sortBy ? { sortBy: item.sortBy } : {}),
+          ...(item.order === "desc" ? { order: "desc" as const } : {}),
+        };
+      });
+    }
+  }
+
   const numberFormat = readNumberFormat(parsed.numberFormat, "numberFormat", errors);
   const cellStyles = readCellStyles(parsed.cellStyles, "cellStyles", errors);
 
   const config: PivotShareableConfig = {
-    rows, columns, filters, filterValues, values, conditions, fieldLabels, numberFormat, cellStyles,
+    rows, columns, filters, filterValues, values, conditions, fieldLabels, fieldSort, numberFormat, cellStyles,
   };
   TOTAL_KEYS.forEach((key) => {
     const value = parsed[key];
@@ -638,6 +673,19 @@ export function buildPivotConfigSchema(fieldIds: string[]) {
         description: "Satır/sütun/filtre alanlarının görünen adları",
         propertyNames: field,
         additionalProperties: { type: "string" },
+      },
+      fieldSort: {
+        type: "object",
+        description: "Satır/sütun/filtre alanlarının değer sırası, ör. { \"branchName\": { \"sortBy\": \"displayOrder\" } }",
+        propertyNames: field,
+        additionalProperties: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            sortBy: { ...field, description: "Sıralamada kullanılacak alan; verilmezse alanın kendi değeri" },
+            order: { enum: ["asc", "desc"], description: "asc: Artan, desc: Azalan" },
+          },
+        },
       },
       showRowTotals: { type: "boolean" },
       showColumnTotals: { type: "boolean" },

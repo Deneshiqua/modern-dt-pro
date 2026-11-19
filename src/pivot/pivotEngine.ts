@@ -2,6 +2,7 @@ import type {
   DataTablePivotAggregate,
   DataTablePivotConfig,
   DataTablePivotDateInterval,
+  DataTablePivotFieldSort,
   DataTablePivotFilterValue,
   DataTablePivotValue,
 } from "../types";
@@ -202,6 +203,52 @@ const compareSort = (a: number | string, b: number | string) => {
   return a.localeCompare(b, "tr-TR", { numeric: true, sensitivity: "base" });
 };
 
+/** Alan siralamasi: `sortBy` verilmisse once ona, esitlikte alanin kendi degerine gore. */
+export type PivotDimensionSort = { sortBy?: string; desc: boolean };
+
+export const resolvePivotDimensionSort = (
+  fieldId: string,
+  fieldSort?: DataTablePivotConfig<any>["fieldSort"],
+): PivotDimensionSort => {
+  const options: DataTablePivotFieldSort | undefined = fieldSort?.[fieldId];
+  const { source } = parsePivotFieldId(fieldId);
+  return {
+    sortBy: options?.sortBy && options.sortBy !== source ? options.sortBy : undefined,
+    desc: options?.order === "desc",
+  };
+};
+
+/** `sortBy` alanindan siralama anahtari; bos deger en sona. */
+export const pivotSortRank = (record: Record<string, any>, sortBy: string): number | string => {
+  const raw = record[sortBy];
+  if (isBlank(raw)) return Number.POSITIVE_INFINITY;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : Number.POSITIVE_INFINITY;
+  if (typeof raw === "boolean") return raw ? 1 : 0;
+  const date = toPivotDate(raw);
+  if (date) return date.getTime();
+  return String(raw);
+};
+
+/** Bos deger yonden bagimsiz en sonda kalir. */
+const compareDirected = (a: number | string, b: number | string, desc: boolean) => {
+  if (a === Number.POSITIVE_INFINITY || b === Number.POSITIVE_INFINITY) return compareSort(a, b);
+  return desc ? compareSort(b, a) : compareSort(a, b);
+};
+
+type Ranked = { sort: number | string; rank?: number | string };
+
+export const comparePivotDimension = (a: Ranked, b: Ranked, sort: PivotDimensionSort) => {
+  if (sort.sortBy) {
+    const byRank = compareDirected(a.rank ?? Number.POSITIVE_INFINITY, b.rank ?? Number.POSITIVE_INFINITY, sort.desc);
+    if (byRank !== 0) return byRank;
+  }
+  return compareDirected(a.sort, b.sort, sort.desc);
+};
+
+/** Ayni deger farkli kayitlarda farkli siralama anahtari tasiyabilir; en kucugu esas alinir. */
+const minRank = (current: number | string | undefined, next: number | string) =>
+  current === undefined || compareSort(next, current) < 0 ? next : current;
+
 /** filterValues degerini karsilastirma anahtarina cevirir. */
 export const pivotFilterKey = (value: DataTablePivotFilterValue) =>
   isBlank(value) ? PIVOT_BLANK_KEY : String(value);
@@ -212,12 +259,18 @@ export function getPivotFieldValues(
   fieldId: string,
   valueMappers?: PivotValueMappers,
   dateFields?: ReadonlySet<string>,
+  fieldSort?: DataTablePivotConfig<any>["fieldSort"],
 ): (PivotDimensionValue & { value: DataTablePivotFilterValue })[] {
   const { interval } = parsePivotFieldId(fieldId);
-  const seen = new Map<string, PivotDimensionValue & { value: DataTablePivotFilterValue }>();
+  const sort = resolvePivotDimensionSort(fieldId, fieldSort);
+  const seen = new Map<string, PivotDimensionValue & { value: DataTablePivotFilterValue; rank?: number | string }>();
   data.forEach((record) => {
     const dimension = resolvePivotDimension(record, fieldId, valueMappers, dateFields);
-    if (seen.has(dimension.key)) return;
+    const existing = seen.get(dimension.key);
+    if (existing) {
+      if (sort.sortBy) existing.rank = minRank(existing.rank, pivotSortRank(record, sort.sortBy));
+      return;
+    }
     const raw = record[parsePivotFieldId(fieldId).source];
     const value: DataTablePivotFilterValue =
       dimension.key === PIVOT_BLANK_KEY
@@ -225,9 +278,15 @@ export function getPivotFieldValues(
         : interval || dateFields?.has(fieldId)
           ? dimension.key
           : (raw as DataTablePivotFilterValue);
-    seen.set(dimension.key, { ...dimension, value });
+    seen.set(dimension.key, {
+      ...dimension,
+      value,
+      ...(sort.sortBy ? { rank: pivotSortRank(record, sort.sortBy) } : {}),
+    });
   });
-  return Array.from(seen.values()).sort((a, b) => compareSort(a.sort, b.sort));
+  return Array.from(seen.values())
+    .sort((a, b) => comparePivotDimension(a, b, sort))
+    .map(({ rank: _rank, ...item }) => item);
 }
 
 export function applyPivotFilters<T extends Record<string, any>>(
@@ -305,6 +364,8 @@ export type PivotNode = {
   path: string;
   label: string;
   sort: number | string;
+  /** `fieldSort.sortBy` alanindan gelen siralama anahtari. */
+  rank?: number | string;
   depth: number;
   children: PivotNode[];
   childMap: Map<string, PivotNode>;
@@ -330,13 +391,20 @@ const createNode = (key: string, path: string, label: string, sort: number | str
   childMap: new Map(),
 });
 
-const sortTree = (node: PivotNode) => {
-  node.children = Array.from(node.childMap.values()).sort((a, b) => compareSort(a.sort, b.sort));
-  node.children.forEach(sortTree);
+/** `sorts[depth]` o derinlikteki alanin siralamasidir. */
+const sortTree = (node: PivotNode, sorts: PivotDimensionSort[]) => {
+  const sort = sorts[node.depth + 1] ?? { desc: false };
+  node.children = Array.from(node.childMap.values()).sort((a, b) => comparePivotDimension(a, b, sort));
+  node.children.forEach((child) => sortTree(child, sorts));
 };
 
 /** Dugumu ve tum ata yollarini (kok dahil) doner. */
-const insertPath = (root: PivotNode, dimensions: PivotDimensionValue[]): string[] => {
+const insertPath = (
+  root: PivotNode,
+  dimensions: PivotDimensionValue[],
+  record: Record<string, any>,
+  sorts: PivotDimensionSort[],
+): string[] => {
   const paths = [root.path];
   let node = root;
   dimensions.forEach((dimension, index) => {
@@ -346,6 +414,8 @@ const insertPath = (root: PivotNode, dimensions: PivotDimensionValue[]): string[
       child = createNode(dimension.key, path, dimension.label, dimension.sort, index);
       node.childMap.set(dimension.key, child);
     }
+    const sortBy = sorts[index]?.sortBy;
+    if (sortBy) child.rank = minRank(child.rank, pivotSortRank(record, sortBy));
     paths.push(child.path);
     node = child;
   });
@@ -365,15 +435,21 @@ export function buildPivotModel<T extends Record<string, any>>(
   const columnRoot = createNode("", "", "Genel Toplam", "", -1);
   const cells = new Map<string, PivotAccumulator[]>();
   const records = applyPivotFilters(data, config.filterValues, valueMappers, dateFields);
+  const rowSorts = rowFields.map((field) => resolvePivotDimensionSort(field, config.fieldSort));
+  const columnSorts = columnFields.map((field) => resolvePivotDimensionSort(field, config.fieldSort));
 
   records.forEach((record) => {
     const rowPaths = insertPath(
       rowRoot,
       rowFields.map((field) => resolvePivotDimension(record, field, valueMappers, dateFields)),
+      record,
+      rowSorts,
     );
     const columnPaths = insertPath(
       columnRoot,
       columnFields.map((field) => resolvePivotDimension(record, field, valueMappers, dateFields)),
+      record,
+      columnSorts,
     );
     rowPaths.forEach((rowPath) => {
       columnPaths.forEach((columnPath) => {
@@ -390,8 +466,8 @@ export function buildPivotModel<T extends Record<string, any>>(
     });
   });
 
-  sortTree(rowRoot);
-  sortTree(columnRoot);
+  sortTree(rowRoot, rowSorts);
+  sortTree(columnRoot, columnSorts);
 
   return {
     rowFields,
